@@ -33,6 +33,7 @@ a JSON with the following structure:
 }
 ```
 
+The `base_timestamp` optional attribute makes the OTA update an incremental one: it is offered only to the build whose `timestamp` it names.  
 The `buildtype` optional attribute is the build type of the OTA update.  
 The `download` attribute is the URL of the file to be downloaded.  
 The `filename` attribute is the name of the file to be downloaded.  

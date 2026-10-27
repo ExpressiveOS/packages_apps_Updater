@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
 import org.evolution.updater.data.source.local.UpdatesLocalDataSource
+import org.evolution.updater.data.source.network.NetworkUpdate
 import org.evolution.updater.data.source.network.UpdatesNetworkDataSource
 import org.evolution.updater.data.source.network.toSupportInfo
 import org.evolution.updater.data.source.network.toUpdate
@@ -63,7 +64,8 @@ class UpdatesRepository(
         appStateRepository.setSupportInfo(
             networkResponse.maxByOrNull { it.timestamp }?.toSupportInfo() ?: SupportInfo()
         )
-        val networkUpdates = networkResponse.map { it.toUpdate() }.filter { filterUpdates(it) }
+        val networkUpdates = networkResponse.filter { isForThisBuild(it) }
+            .map { it.toUpdate() }.filter { filterUpdates(it) }
 
         if (networkUpdates.isEmpty()) {
             systemUpdateInfoPublisher.publish()
@@ -101,6 +103,17 @@ class UpdatesRepository(
         systemUpdateInfoPublisher.publish()
 
         return System.currentTimeMillis()
+    }
+
+    // An incremental update only installs over the exact build it was made from: update_engine
+    // refuses any other after the download
+    private fun isForThisBuild(update: NetworkUpdate): Boolean {
+        val base = update.baseTimestamp ?: return true
+        if (base != DeviceInfoUtils.buildDateTimestamp) {
+            Log.d(TAG, "${update.filename} is an incremental update for another build")
+            return false
+        }
+        return true
     }
 
     private fun filterUpdates(update: Update): Boolean {

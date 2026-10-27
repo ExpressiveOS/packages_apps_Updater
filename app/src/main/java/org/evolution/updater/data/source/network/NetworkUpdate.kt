@@ -30,6 +30,8 @@ data class NetworkUpdates(
 @Serializable
 @JsonIgnoreUnknownKeys
 data class NetworkUpdate(
+    // An incremental update: the build date (timestamp) of the one build it applies to
+    @SerialName("base_timestamp") val baseTimestamp: Long? = null,
     @SerialName("buildtype") val buildType: String? = null,
     // @SerialName("device") val device: String,
     @SerialName("download") val download: String,
