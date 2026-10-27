@@ -81,7 +81,7 @@ private val SPARKLES = arrayOf(
 )
 
 /**
- * The Evolution X wordmark with a holographic treatment: a pink, violet and
+ * The ExpressiveOS wordmark with a holographic treatment: a pink, violet and
  * cyan gradient sweeping across the outline, a soft neon glow with a chromatic
  * fringe, a periodic shine streak and a few twinkling sparkles. Shine and
  * sparkles follow the theme's on-surface color. Mirrors GlowView in Settings.
