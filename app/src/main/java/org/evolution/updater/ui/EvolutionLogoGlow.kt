@@ -7,6 +7,7 @@ package org.evolution.updater.ui
 
 import android.animation.ValueAnimator
 import android.graphics.BlurMaskFilter
+import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
@@ -39,9 +40,22 @@ import org.evolution.updater.R
 private const val VIEWPORT_W = 1080f
 private const val VIEWPORT_H = 240f
 
-private val PINK = 0xFFFF2E9A.toInt()
-private val VIOLET = 0xFF8B5CF6.toInt()
-private val CYAN = 0xFF22D3EE.toInt()
+// The Bloom mark's petals in the boot animation wordmark's order, the first
+// repeated so the sweep loops: mid tones for dark surfaces, deep tones for light ones.
+private val BLOOM_ON_DARK = intArrayOf(
+    0xFFAE69FC.toInt(), 0xFF417BFC.toInt(), 0xFF4AD29D.toInt(), 0xFFFD7771.toInt(), 0xFFAE69FC.toInt(),
+)
+private val BLOOM_ON_LIGHT = intArrayOf(
+    0xFF6B2BBB.toInt(), 0xFF1842D1.toInt(), 0xFF18A07C.toInt(), 0xFFD33952.toInt(), 0xFF6B2BBB.toInt(),
+)
+private val BLOOM_STOPS = floatArrayOf(0f, 0.25f, 0.5f, 0.75f, 1f)
+
+// Fringe: the blue petal left, the violet petal right (light tones on dark
+// surfaces, deep tones on light ones)
+private val FRINGE_LEFT_ON_DARK = 0xFF76BCFB.toInt()
+private val FRINGE_RIGHT_ON_DARK = 0xFFF3B1FC.toInt()
+private val FRINGE_LEFT_ON_LIGHT = 0xFF1842D1.toInt()
+private val FRINGE_RIGHT_ON_LIGHT = 0xFF6B2BBB.toInt()
 
 // Gradient vector (viewport units). One sweep moves it by its own length,
 // so the repeating gradient loops seamlessly.
@@ -81,10 +95,12 @@ private val SPARKLES = arrayOf(
 )
 
 /**
- * The ExpressiveOS wordmark with a holographic treatment: a pink, violet and
- * cyan gradient sweeping across the outline, a soft neon glow with a chromatic
- * fringe, a periodic shine streak and a few twinkling sparkles. Shine and
- * sparkles follow the theme's on-surface color. Mirrors GlowView in Settings.
+ * The ExpressiveOS wordmark in the Bloom mark's colours: its four petals
+ * (violet, blue, green, coral) as a gradient sweeping across the outline, a
+ * soft glow with a blue and violet fringe, a periodic shine streak and a few
+ * twinkling sparkles. Shine and sparkles follow the theme's on-surface color,
+ * and a light one (a dark surface) picks the petals' mid tones (light tones for
+ * the fringe) over their deep ones. Mirrors GlowView in Settings.
  */
 @Composable
 fun EvolutionLogoGlow(
@@ -142,17 +158,13 @@ private class GlowRenderer(pathData: Array<String>) {
         strokeJoin = Paint.Join.ROUND
         alpha = GLOW_ALPHA
     }
-    private val cyanPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val leftFringePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeJoin = Paint.Join.ROUND
-        color = CYAN
-        alpha = FRINGE_ALPHA
     }
-    private val pinkPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val rightFringePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeJoin = Paint.Join.ROUND
-        color = PINK
-        alpha = FRINGE_ALPHA
     }
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
@@ -181,6 +193,7 @@ private class GlowRenderer(pathData: Array<String>) {
         Shader.TileMode.CLAMP,
     )
     private var holo: LinearGradient? = null
+    private var holoColors = BLOOM_ON_DARK
 
     private var width = 0f
     private var height = 0f
@@ -205,18 +218,18 @@ private class GlowRenderer(pathData: Array<String>) {
 
         glowPaint.strokeWidth = GLOW_STROKE * scale
         glowPaint.maskFilter = glowBlur
-        cyanPaint.strokeWidth = FRINGE_STROKE * scale
-        cyanPaint.maskFilter = fringeBlur
-        pinkPaint.strokeWidth = FRINGE_STROKE * scale
-        pinkPaint.maskFilter = fringeBlur
+        leftFringePaint.strokeWidth = FRINGE_STROKE * scale
+        leftFringePaint.maskFilter = fringeBlur
+        rightFringePaint.strokeWidth = FRINGE_STROKE * scale
+        rightFringePaint.maskFilter = fringeBlur
         strokePaint.strokeWidth = MAIN_STROKE * scale
         shineStroke.strokeWidth = MAIN_STROKE * scale
 
         holo = LinearGradient(
             ox + GRAD_X1 * scale, oy + GRAD_Y1 * scale,
             ox + GRAD_X2 * scale, oy + GRAD_Y2 * scale,
-            intArrayOf(PINK, VIOLET, CYAN, PINK),
-            floatArrayOf(0f, 0.33f, 0.66f, 1f),
+            holoColors,
+            BLOOM_STOPS,
             Shader.TileMode.REPEAT,
         )
     }
@@ -227,11 +240,20 @@ private class GlowRenderer(pathData: Array<String>) {
         shineFill.alpha = SHINE_FILL_ALPHA
         shineStroke.color = color
         sparklePaint.color = color
+
+        // Light ink means a dark surface
+        val onDark = Color.luminance(color) > 0.5f
+        holoColors = if (onDark) BLOOM_ON_DARK else BLOOM_ON_LIGHT
+        leftFringePaint.color = if (onDark) FRINGE_LEFT_ON_DARK else FRINGE_LEFT_ON_LIGHT
+        leftFringePaint.alpha = FRINGE_ALPHA
+        rightFringePaint.color = if (onDark) FRINGE_RIGHT_ON_DARK else FRINGE_RIGHT_ON_LIGHT
+        rightFringePaint.alpha = FRINGE_ALPHA
+        holo = null // layout() makes it again in the new colours
     }
 
     fun draw(canvas: android.graphics.Canvas, w: Float, h: Float, t: Long, inkColor: Int) {
-        if (w != width || h != height || holo == null) layout(w, h)
         if (inkColor != ink) applyInk(inkColor)
+        if (w != width || h != height || holo == null) layout(w, h)
         val holo = holo ?: return
         if (scale <= 0f) return
 
@@ -246,17 +268,17 @@ private class GlowRenderer(pathData: Array<String>) {
         fillPaint.shader = holo
         strokePaint.shader = holo
 
-        // Neon glow, then the cyan/pink chromatic fringe
+        // Soft glow, then the blue/violet fringe
         canvas.drawPath(logo, glowPaint)
 
         canvas.save()
         canvas.translate(-FRINGE_SHIFT * scale, 0f)
-        canvas.drawPath(logo, cyanPaint)
+        canvas.drawPath(logo, leftFringePaint)
         canvas.restore()
 
         canvas.save()
         canvas.translate(FRINGE_SHIFT * scale, 0f)
-        canvas.drawPath(logo, pinkPaint)
+        canvas.drawPath(logo, rightFringePaint)
         canvas.restore()
 
         // Glassy fill and gradient outline
