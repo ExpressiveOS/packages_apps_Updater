@@ -5,5 +5,5 @@
 -->
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <!-- URL template for opening the device-specific downloads page from the update menu. -->
-    <string name="menu_downloads_url" translatable="false">https://evolution-x.org/devices/<xliff:g id="device_name">%1$s</xliff:g></string>
+    <string name="menu_downloads_url" translatable="false">https://sourceforge.net/projects/denson9874-s-user-builds/files/expressiveos/<xliff:g id="device_name">%1$s</xliff:g>/</string>
 </resources>
