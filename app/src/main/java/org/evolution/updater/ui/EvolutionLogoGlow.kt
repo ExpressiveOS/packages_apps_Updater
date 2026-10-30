@@ -6,6 +6,7 @@
 package org.evolution.updater.ui
 
 import android.animation.ValueAnimator
+import android.content.Context
 import android.graphics.BlurMaskFilter
 import android.graphics.Color
 import android.graphics.LinearGradient
@@ -15,6 +16,7 @@ import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.Shader
+import android.provider.Settings
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.material3.MaterialTheme
@@ -56,6 +58,37 @@ private val FRINGE_LEFT_ON_DARK = 0xFF76BCFB.toInt()
 private val FRINGE_RIGHT_ON_DARK = 0xFFF3B1FC.toInt()
 private val FRINGE_LEFT_ON_LIGHT = 0xFF1842D1.toInt()
 private val FRINGE_RIGHT_ON_LIGHT = 0xFF6B2BBB.toInt()
+
+/**
+ * The wordmark's colours on dark and on light surfaces: the sweep's five stops (the first colour
+ * repeated last, for [BLOOM_STOPS]) and the fringe's left and right colours.
+ */
+private class GlowPalette(
+    val onDark: IntArray,
+    val onLight: IntArray,
+    val fringeLeftOnDark: Int,
+    val fringeRightOnDark: Int,
+    val fringeLeftOnLight: Int,
+    val fringeRightOnLight: Int,
+)
+
+private val BLOOM = GlowPalette(
+    onDark = BLOOM_ON_DARK,
+    onLight = BLOOM_ON_LIGHT,
+    fringeLeftOnDark = FRINGE_LEFT_ON_DARK,
+    fringeRightOnDark = FRINGE_RIGHT_ON_DARK,
+    fringeLeftOnLight = FRINGE_LEFT_ON_LIGHT,
+    fringeRightOnLight = FRINGE_RIGHT_ON_LIGHT,
+)
+
+/**
+ * Settings.Secure key with the banner colours of the holiday theme that is on, written by
+ * Settings' holiday themes (Settings' GlowView reads it too):
+ * "<id>;<sweep on dark>;<sweep on light>;<fringe on dark>;<fringe on light>", a sweep being 4
+ * RRGGBB colours and a fringe 2 (left, right), split by ','. Unset, empty or anything else means
+ * the Bloom colours.
+ */
+private const val KEY_HOLIDAY_PALETTE = "expressiveos_holiday_palette"
 
 // Gradient vector (viewport units). One sweep moves it by its own length,
 // so the repeating gradient loops seamlessly.
@@ -100,7 +133,9 @@ private val SPARKLES = arrayOf(
  * soft glow with a blue and violet fringe, a periodic shine streak and a few
  * twinkling sparkles. Shine and sparkles follow the theme's on-surface color,
  * and a light one (a dark surface) picks the petals' mid tones (light tones for
- * the fringe) over their deep ones. Mirrors GlowView in Settings.
+ * the fringe) over their deep ones. While a holiday theme's banner is on, the
+ * sweep and the fringe are in that holiday's colours instead, read once per
+ * composition (see [KEY_HOLIDAY_PALETTE]). Mirrors GlowView in Settings.
  */
 @Composable
 fun EvolutionLogoGlow(
@@ -112,6 +147,8 @@ fun EvolutionLogoGlow(
         GlowRenderer(context.resources.getStringArray(R.array.evolution_logo_paths))
     }
     val ink = MaterialTheme.colorScheme.onSurface.toArgb() or 0xFF000000.toInt()
+    // A holiday theme's colours while its banner is on, else Bloom's
+    val palette = remember { readHolidayPalette(context) ?: BLOOM }
 
     // Respect "remove animations": draw one still frame instead of looping.
     val animate = remember { ValueAnimator.areAnimatorsEnabled() }
@@ -132,7 +169,7 @@ fun EvolutionLogoGlow(
     ) {
         val t = time
         drawIntoCanvas { canvas ->
-            renderer.draw(canvas.nativeCanvas, size.width, size.height, t, ink)
+            renderer.draw(canvas.nativeCanvas, size.width, size.height, t, ink, palette)
         }
     }
 }
@@ -201,6 +238,7 @@ private class GlowRenderer(pathData: Array<String>) {
     private var ox = 0f
     private var oy = 0f
     private var ink = 0
+    private var palette = BLOOM
 
     private fun layout(w: Float, h: Float) {
         width = w
@@ -234,8 +272,9 @@ private class GlowRenderer(pathData: Array<String>) {
         )
     }
 
-    private fun applyInk(color: Int) {
+    private fun applyInk(color: Int, colors: GlowPalette) {
         ink = color
+        palette = colors
         shineFill.color = color
         shineFill.alpha = SHINE_FILL_ALPHA
         shineStroke.color = color
@@ -243,16 +282,23 @@ private class GlowRenderer(pathData: Array<String>) {
 
         // Light ink means a dark surface
         val onDark = Color.luminance(color) > 0.5f
-        holoColors = if (onDark) BLOOM_ON_DARK else BLOOM_ON_LIGHT
-        leftFringePaint.color = if (onDark) FRINGE_LEFT_ON_DARK else FRINGE_LEFT_ON_LIGHT
+        holoColors = if (onDark) colors.onDark else colors.onLight
+        leftFringePaint.color = if (onDark) colors.fringeLeftOnDark else colors.fringeLeftOnLight
         leftFringePaint.alpha = FRINGE_ALPHA
-        rightFringePaint.color = if (onDark) FRINGE_RIGHT_ON_DARK else FRINGE_RIGHT_ON_LIGHT
+        rightFringePaint.color = if (onDark) colors.fringeRightOnDark else colors.fringeRightOnLight
         rightFringePaint.alpha = FRINGE_ALPHA
         holo = null // layout() makes it again in the new colours
     }
 
-    fun draw(canvas: android.graphics.Canvas, w: Float, h: Float, t: Long, inkColor: Int) {
-        if (inkColor != ink) applyInk(inkColor)
+    fun draw(
+        canvas: android.graphics.Canvas,
+        w: Float,
+        h: Float,
+        t: Long,
+        inkColor: Int,
+        colors: GlowPalette,
+    ) {
+        if (inkColor != ink || colors !== palette) applyInk(inkColor, colors)
         if (w != width || h != height || holo == null) layout(w, h)
         val holo = holo ?: return
         if (scale <= 0f) return
@@ -268,7 +314,7 @@ private class GlowRenderer(pathData: Array<String>) {
         fillPaint.shader = holo
         strokePaint.shader = holo
 
-        // Soft glow, then the blue/violet fringe
+        // Soft glow, then the fringe (blue and violet in Bloom)
         canvas.drawPath(logo, glowPaint)
 
         canvas.save()
@@ -333,6 +379,48 @@ private class GlowRenderer(pathData: Array<String>) {
 
     // BlurMaskFilter takes a radius, Skia converts it with sigma = 0.57735 * r + 0.5
     private fun blurRadius(sigma: Float): Float = maxOf(1f, (sigma - 0.5f) / 0.57735f)
+}
+
+/**
+ * The [KEY_HOLIDAY_PALETTE] colours, or null (Bloom) when the key is unset, can't be read or
+ * isn't exactly the five groups it should be.
+ */
+private fun readHolidayPalette(context: Context): GlowPalette? {
+    val value = runCatching {
+        Settings.Secure.getString(context.contentResolver, KEY_HOLIDAY_PALETTE)
+    }.getOrNull() ?: return null
+
+    val groups = value.trim().split(';')
+    if (groups.size != 5 || groups[0].isEmpty() || ',' in groups[0]) return null
+    val onDark = parseColors(groups[1], 4) ?: return null
+    val onLight = parseColors(groups[2], 4) ?: return null
+    val fringeOnDark = parseColors(groups[3], 2) ?: return null
+    val fringeOnLight = parseColors(groups[4], 2) ?: return null
+    return GlowPalette(
+        // The first colour repeated, so the sweep loops
+        onDark = onDark + onDark[0],
+        onLight = onLight + onLight[0],
+        fringeLeftOnDark = fringeOnDark[0],
+        fringeRightOnDark = fringeOnDark[1],
+        fringeLeftOnLight = fringeOnLight[0],
+        fringeRightOnLight = fringeOnLight[1],
+    )
+}
+
+/** Exactly [count] opaque colours from RRGGBB hex split by ',', else null. */
+private fun parseColors(group: String, count: Int): IntArray? {
+    val parts = group.split(',')
+    if (parts.size != count) return null
+    val colors = IntArray(count)
+    for (i in 0 until count) {
+        val part = parts[i]
+        // ASCII hex only: toInt(16) alone would also take a sign and other scripts' digits
+        if (part.length != 6 || !part.all { it in '0'..'9' || it in 'A'..'F' || it in 'a'..'f' }) {
+            return null
+        }
+        colors[i] = part.toInt(16) or 0xFF000000.toInt()
+    }
+    return colors
 }
 
 @UiModePreviews
