@@ -7,6 +7,7 @@ package org.evolution.updater.deviceinfo
 
 import android.os.Build
 import android.os.SystemProperties
+import java.io.File
 import com.android.settingslib.DeviceInfoUtils as SettingsLibDeviceInfoUtils
 
 object DeviceInfoUtils : SettingsLibDeviceInfoUtils() {
@@ -21,6 +22,12 @@ object DeviceInfoUtils : SettingsLibDeviceInfoUtils() {
     private const val PROP_UPDATER_URI = "evolution.updater.uri"
     private const val PROP_UPDATE_RECOVERY = "persist.vendor.recovery_update"
 
+    private val BUILD_PROP_FILES = listOf(
+        "/system/build.prop",
+        "/product/etc/build.prop",
+        "/system_ext/etc/build.prop",
+    )
+
     // Read-only
     val androidVersion: String = Build.VERSION.RELEASE
 
@@ -32,10 +39,10 @@ object DeviceInfoUtils : SettingsLibDeviceInfoUtils() {
     val buildDateTimestamp: Long = SystemProperties.getLong(PROP_BUILD_DATE, 0)
 
     @JvmStatic
-    val buildVersion: String = SystemProperties.get(PROP_BUILD_VERSION, "")
+    val buildVersion: String = romProp(PROP_BUILD_VERSION)
 
     @JvmStatic
-    val device: String = SystemProperties.get(PROP_NEXT_DEVICE, SystemProperties.get(PROP_DEVICE))
+    val device: String = SystemProperties.get(PROP_NEXT_DEVICE).ifEmpty { romProp(PROP_DEVICE) }
 
     @JvmStatic
     val isABDevice: Boolean = SystemProperties.getBoolean(PROP_AB_DEVICE, false)
@@ -57,4 +64,20 @@ object DeviceInfoUtils : SettingsLibDeviceInfoUtils() {
     @JvmStatic
     val updaterUri: String
         get() = SystemProperties.get(PROP_UPDATER_URI, "")
+
+    /**
+     * Integrity modules (Integrity Box's custom-ROM hiding) delete the ROM's own props at runtime,
+     * which left update checks pointing at builds/.json. The build.prop files they came from are
+     * untouched, so read the value from there when the runtime prop is gone.
+     */
+    private fun romProp(name: String): String =
+        SystemProperties.get(name).ifEmpty {
+            BUILD_PROP_FILES.firstNotNullOfOrNull { path ->
+                runCatching {
+                    File(path).useLines { lines ->
+                        lines.firstOrNull { it.startsWith("$name=") }?.substringAfter('=')?.trim()
+                    }
+                }.getOrNull()
+            }.orEmpty()
+        }
 }
