@@ -48,7 +48,12 @@ class ChangelogRepository(private val context: Context) {
             }
 
             val url = context.getString(R.string.menu_changelog_url, device)
-            val lines = fetch(url).trimEnd().lines()
+            val raw = try {
+                fetch(url)
+            } catch (e: Exception) {
+                readLocalChangelog() ?: throw e
+            }
+            val lines = raw.trimEnd().lines()
             val markdown =
                 toMarkdown(
                     lines = lines.take(MAX_LINES),
@@ -102,6 +107,24 @@ class ChangelogRepository(private val context: Context) {
             }
             append(it)
         }
+    }
+
+    private fun readLocalChangelog(): String? {
+        val paths = listOf(
+            "/system/etc/Changelog.txt",
+            "/product/etc/Changelog.txt",
+            "/system_ext/etc/Changelog.txt"
+        )
+        for (path in paths) {
+            val file = java.io.File(path)
+            if (file.isFile && file.length() > 0) {
+                try {
+                    return file.readText(Charsets.UTF_8)
+                } catch (_: Exception) {
+                }
+            }
+        }
+        return null
     }
 
     private companion object {
