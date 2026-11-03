@@ -93,7 +93,11 @@ fun Update.toEntity() = UpdateEntity(
     downloadUrl = downloadUrl
 )
 
+// The table doesn't keep isAvailableOnline. UpdatesRepository.fetchUpdates() removes every
+// row the server no longer offers, so a row with a download URL is one it offers; a local
+// import (LOCAL_ID) never is
 fun UpdateEntity.toUpdate() = Update(
+    isAvailableOnline = downloadId != Update.LOCAL_ID && downloadUrl != null,
     downloadId = downloadId,
     status = UpdateStatus.fromPersistentStatus(status),
     file = path?.let { File(it) },
