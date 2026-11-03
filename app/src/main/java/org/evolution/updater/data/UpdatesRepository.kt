@@ -67,11 +67,6 @@ class UpdatesRepository(
         val networkUpdates = networkResponse.filter { isForThisBuild(it) }
             .map { it.toUpdate() }.filter { filterUpdates(it) }
 
-        if (networkUpdates.isEmpty()) {
-            systemUpdateInfoPublisher.publish()
-            return System.currentTimeMillis()
-        }
-
         val networkIds = networkUpdates.map { it.downloadId }.toSet()
 
         if (localUpdates.isNotEmpty() && networkUpdates.any { it.downloadId !in localUpdates }) {
