@@ -139,7 +139,7 @@
     <string name="build_date">Build date</string>
     <string name="security_update">Security update</string>
     <string name="report_issues">Report issues</string>
-    <string name="report_issue_url" translatable="false">https://t.me/ExpressiveGroup</string>
+    <string name="report_issue_url" translatable="false">https://t.me/ExpressiveLauncherFeedback/753</string>
     <string name="header_review_updates">Review updates and recent changes on</string>
     <string name="header_download_url" translatable="false">t.me/ExpressiveGroup</string>
     <string name="found_bug">Found a bug? Report it with our bug report guide:</string>
