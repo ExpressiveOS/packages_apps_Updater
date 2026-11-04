@@ -80,8 +80,8 @@ fun NetworkUpdate.toUpdate(): Update {
         downloadUrl = download,
         version = version,
         osPatchLevel = osPatchLevel,
-        // Evolution X builds don't advertise their SDK level; assume the running one so they
-        // aren't treated as Android downgrades.
+        // The ExpressiveOS feed doesn't advertise its builds' SDK level; assume the running one
+        // so they aren't treated as Android downgrades.
         osSdkLevel = osSdkLevel ?: DeviceInfoUtils.sdkLevel,
         payloadMetadataOffset = payloadMetadataRange?.offset,
         payloadMetadataSize = payloadMetadataRange?.size,
