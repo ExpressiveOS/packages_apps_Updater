@@ -12,11 +12,33 @@ if [ ! -f "$1" ]; then
    echo "Usage: $0 ZIP [UNVERIFIED] [SERIAL]"
    echo "Push ZIP to $updates_dir and add it to Updater"
    echo
-   echo "The name of ZIP is assumed to have EvolutionX-VERSION-DATE-TYPE-* as format"
+   echo "The name of ZIP is assumed to have ExpressiveOS-ANDROID-DATE-DEVICE-VERSION-TYPE as format,"
+   echo "e.g. ExpressiveOS-17.0-20261203-cheetah-1.1-Official.zip"
    echo "If UNVERIFIED is set, the app will verify the update"
    exit
 fi
 zip_path=`realpath "$1"`
+zip_name=`basename "$zip_path"`
+
+# Assume ExpressiveOS-ANDROID-DATE-DEVICE-VERSION-TYPE.zip, where VERSION is the ExpressiveOS
+# version (such as 1.1, or 1.1-Vanilla for a build without GMS) and TYPE is Official or
+# Unofficial. A second release on the same day adds -rN to the name, and an incremental
+# package adds -incremental-from-BASEDATE.
+release=${zip_name%.zip}
+release=${release%%-incremental-from-*}
+case "$release" in
+    *-r[0-9]|*-r[0-9][0-9]) release=${release%-r*} ;;
+esac
+type=${release##*-}
+version=`echo "${release%-*}" | cut -d'-' -f5-`
+case "$zip_name:$type" in
+    ExpressiveOS-*.zip:Official|ExpressiveOS-*.zip:Unofficial) ;;
+    *) version= ;;
+esac
+if [ -z "$version" ]; then
+    echo "$zip_name isn't named ExpressiveOS-ANDROID-DATE-DEVICE-VERSION-TYPE.zip"
+    exit 1
+fi
 
 serial="$3"
 ADB="adb"
@@ -31,7 +53,7 @@ if ! $ADB root; then
     exit 1
 fi
 
-zip_path_device=$updates_dir/`basename "$zip_path"`
+zip_path_device=$updates_dir/$zip_name
 if $ADB shell test -f "$zip_path_device"; then
     echo "$zip_path_device exists already"
     $ADB unroot
@@ -44,11 +66,7 @@ else
     status=2
 fi
 
-# Assume EvolutionX-VERSION-DATE-TYPE-*.zip
-zip_name=`basename "$zip_path"`
 id=`echo "$zip_name" | sha1sum | cut -d' ' -f1`
-version=`echo "$zip_name" | cut -d'-' -f2`
-type=`echo "$zip_name" | cut -d'-' -f4`
 timestamp=`unzip -p "$zip_path" META-INF/com/android/metadata | grep post-timestamp | cut -d'=' -f2`
 os_patch_level=`unzip -p "$zip_path" META-INF/com/android/metadata | grep post-security-patch-level | cut -d'=' -f2`
 os_sdk_level=`unzip -p "$zip_path" META-INF/com/android/metadata | grep post-sdk-level | cut -d'=' -f2`

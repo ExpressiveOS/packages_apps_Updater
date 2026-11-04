@@ -5,33 +5,66 @@ SPDX-License-Identifier: Apache-2.0
 
 Updater
 =======
-Simple application to download and apply OTA packages.
+ExpressiveOS's system update app, based on LineageOS's Updater. It checks the
+ExpressiveOS OTA feed for new builds, downloads them and installs them over the
+air.
 
 
-Server requirements
--------------------
-The app sends `GET` requests to the URL defined by the `updater_server_url`
-resource (or the `evolution.updater.uri` system property) and expects as response
-a JSON with the following structure:
+Where it looks for updates
+--------------------------
+The app sends a `GET` request to the URL in the `updater_server_url` resource,
+which a device tree can overlay. By default that is the ExpressiveOS OTA feed:
+
+```
+https://raw.githubusercontent.com/denson9874/expressiveos_ota/main/builds/{device}.json
+```
+
+`{device}` is replaced at runtime with the device codename, read from
+`ro.updater.next_device` or, when that is empty, `ro.evolution.device`.
+
+To point a build at another feed, set the `evolution.updater.uri` system
+property. When it is set, it is used instead of `updater_server_url`, and
+`{device}` is replaced in it the same way. The URL must use `https://`, and
+redirects are not followed.
+
+The notes shown for an update are the plain text file named by the
+`menu_changelog_url` resource, by default `changelogs/<device>.txt` in the same
+repository as the feed. When it can't be fetched, the app falls back to a
+`Changelog.txt` in `/system/etc`, `/product/etc` or `/system_ext/etc`.
+
+
+Feed format
+-----------
+The server must answer with a JSON with the following structure:
 ```json
 {
   "response": [
     {
       "buildtype": "user",
-      "download": "https://example.com/EvolutionX-17.0-20261010-marble-12.3-Official.zip",
-      "filename": "EvolutionX-17.0-20261010-marble-12.3-Official.zip",
-      "firmware": "https://example.com/firmware/marble",
-      "forum": "https://example.com/forum/marble",
+      "download": "https://example.com/expressiveos/cheetah/ota/ExpressiveOS-17.0-20261203-cheetah-1.1-Official.zip",
+      "filename": "ExpressiveOS-17.0-20261203-cheetah-1.1-Official.zip",
+      "firmware": "https://developers.google.com/android/images#cheetah",
+      "forum": "https://example.com/forum/cheetah",
       "maintainer": "Name",
+      "os_patch_level": "2026-11-01",
       "paypal": "https://example.com/donate",
       "sha256": "fd2e25df5a8f49a87e82ca052f99ffac5187b145c1867ad0c02f500b575eedaf",
-      "size": 3624880471,
-      "timestamp": 1791622433,
-      "version": "12.3"
+      "size": 3436884325,
+      "timestamp": 1796263200,
+      "version": "1.1"
     }
   ]
 }
 ```
+
+`{"response": []}` means that no build is published, and the app reports that
+there are no updates.
+
+ExpressiveOS packages are named
+`ExpressiveOS-<Android version>-<build date>-<device>-<ExpressiveOS version>-<release type>.zip`,
+for example `ExpressiveOS-17.0-20261203-cheetah-1.1-Official.zip`: Android 17.0,
+built on 2026-12-03, for cheetah (Pixel 7 Pro), ExpressiveOS 1.1, an Official
+release. The app doesn't parse the name; it saves the download under it.
 
 The `base_timestamp` optional attribute makes the OTA update an incremental one: it is offered only to the build whose `timestamp` it names.  
 The `buildtype` optional attribute is the build type of the OTA update.  
@@ -47,9 +80,31 @@ The `paypal` optional attribute is a donation link for the device maintainer.
 The `sha256` attribute is a sha256 of the OTA update.  
 The `size` attribute is the size of the update expressed in bytes.  
 The `timestamp` attribute is the build date expressed as UNIX timestamp.  
-The `version` attribute is the Evolution X version of the OTA update.  
+The `version` attribute is the ExpressiveOS version of the OTA update, such as `1.1`.  
 
-Additional attributes are ignored.
+Additional attributes are ignored, such as the `device`, `oem`, `md5`,
+`currently_maintained` and `github` fields that the ExpressiveOS feed also
+carries.
+
+An update is offered only when its `timestamp` is newer than the running
+build's `ro.build.date.utc` and its SDK level isn't lower than the running one.
+Setting `evolution.updater.allow_downgrading` to `true` lifts the first check,
+and an update for a newer Android SDK level can only be installed when
+`evolution.updater.allow_major_upgrades` is `true`.
+
+
+Testing a local package
+-----------------------
+`push-update.sh` copies an OTA package to a connected device over adb and adds
+it to the app's list of updates, so it can be installed without publishing it:
+
+```
+./push-update.sh ExpressiveOS-17.0-20261203-cheetah-1.1-Official.zip [UNVERIFIED] [SERIAL]
+```
+
+It reads the ExpressiveOS version and the release type from the file name, so
+the package must keep the name the build gave it. The device must allow
+`adb root`.
 
 
 Build with Android Studio
