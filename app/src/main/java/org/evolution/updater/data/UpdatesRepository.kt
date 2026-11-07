@@ -17,6 +17,7 @@ import org.evolution.updater.data.source.network.toSupportInfo
 import org.evolution.updater.data.source.network.toUpdate
 import org.evolution.updater.deviceinfo.DeviceInfoUtils
 import org.evolution.updater.notifications.NotificationHelper
+import org.evolution.updater.util.InstallUtils
 import org.evolution.updater.util.NetworkMonitor
 import org.evolution.updater.util.SystemUpdateInfoPublisher
 import java.io.IOException
@@ -126,6 +127,11 @@ class UpdatesRepository(
 
         if (update.osSdkLevel < DeviceInfoUtils.sdkLevel) {
             Log.d(TAG, "${update.name} is older than current Android version")
+            return false
+        }
+
+        if (InstallUtils.isOlderPatchLevel(update)) {
+            Log.d(TAG, "${update.name} has an older security patch than this build")
             return false
         }
         return true
