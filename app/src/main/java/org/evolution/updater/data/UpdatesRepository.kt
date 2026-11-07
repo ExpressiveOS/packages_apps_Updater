@@ -38,11 +38,13 @@ class UpdatesRepository(
      * notification if new updates are found. Callers observe [observeLocalUpdates] for results —
      * Room only emits when the stored data actually changes.
      *
+     * @param notifyNew post the "new updates" notification when the feed offers an update that
+     *   is not stored yet (the background check passes true).
      * @return the timestamp of the fetch, or null if skipped due to no network.
      * @throws IOException on network or HTTP errors.
      * @throws SerializationException if the response cannot be parsed.
      */
-    suspend fun fetchUpdates(): Long? {
+    suspend fun fetchUpdates(notifyNew: Boolean = false): Long? {
         if (!networkMonitor.currentNetworkState.isOnline) return null
 
         val localUpdates = withContext(Dispatchers.IO) {
@@ -69,7 +71,9 @@ class UpdatesRepository(
 
         val networkIds = networkUpdates.map { it.downloadId }.toSet()
 
-        if (localUpdates.isNotEmpty() && networkUpdates.any { it.downloadId !in localUpdates }) {
+        // Don't require stored updates: the store is empty before every release (rows for the
+        // installed build are swept above), so that check meant no release ever notified.
+        if (notifyNew && networkUpdates.any { it.downloadId !in localUpdates }) {
             notificationHelper.showNewUpdatesNotification()
         }
 

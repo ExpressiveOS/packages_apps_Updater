@@ -33,7 +33,7 @@ class UpdatesCheckWorker(
     override suspend fun doWork(): Result {
         return try {
             val application = applicationContext as UpdaterApplication
-            val fetchedAt = application.updatesRepository.fetchUpdates()
+            val fetchedAt = application.updatesRepository.fetchUpdates(notifyNew = true)
             if (fetchedAt != null) {
                 application.appStateRepository.setLastCheckedTimestamp(fetchedAt)
             }

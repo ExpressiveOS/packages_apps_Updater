@@ -77,11 +77,13 @@ class ChangelogRepository(private val context: Context) {
             if (contentLength > MAX_RESPONSE_BYTES) {
                 throw IOException("Changelog response is too large: $contentLength bytes")
             }
-            val bytes = body.source().readByteArray(MAX_RESPONSE_BYTES + 1)
-            if (bytes.size > MAX_RESPONSE_BYTES) {
+            // readByteArray(n) needs exactly n bytes and throws EOFException on anything
+            // shorter, so buffer up to the cap without requiring it.
+            val source = body.source()
+            if (source.request(MAX_RESPONSE_BYTES + 1)) {
                 throw IOException("Changelog response exceeds $MAX_RESPONSE_BYTES bytes")
             }
-            bytes.decodeToString()
+            source.buffer.readByteArray().decodeToString()
         }
     }
 
