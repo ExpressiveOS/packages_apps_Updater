@@ -10,6 +10,7 @@ import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.ParcelFileDescriptor;
+import android.os.SystemProperties;
 import android.util.Log;
 
 import org.evolution.updater.controller.UpdaterController;
@@ -123,6 +124,12 @@ public class UpdateImporter {
 
     private Update buildLocalUpdate(File file) throws IOException {
         final OtaMetadataParser metadata = new OtaMetadataParser(file);
+        // Every ExpressiveOS phone shares one OTA key, so the signature check alone accepts
+        // another phone's package. Recovery checks the device; update_engine does not.
+        final String device = SystemProperties.get("ro.product.device");
+        if (!metadata.getDevices().isEmpty() && !metadata.getDevices().contains(device)) {
+            throw new IOException("Package is for " + metadata.getDevices() + ", not " + device);
+        }
         final String name = activity.getString(R.string.local_update_name);
         return new Update.Builder()
             .setName(name)

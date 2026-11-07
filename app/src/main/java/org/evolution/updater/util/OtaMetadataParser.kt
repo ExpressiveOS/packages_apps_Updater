@@ -15,6 +15,8 @@ class OtaMetadataParser @Throws(IOException::class) constructor(file: File) {
     val securityPatchLevel: String
     val timestamp: Long
     val isABUpdate: Boolean
+    /** The devices the package is built for (precondition.device); empty if it names none. */
+    val devices: List<String>
 
     init {
         val metadata = ZipFile(file).use { readMetadata(it) }
@@ -29,6 +31,7 @@ class OtaMetadataParser @Throws(IOException::class) constructor(file: File) {
         sdkLevel = postcondition.sdkLevel.toInt()
         securityPatchLevel = postcondition.securityPatchLevel
         timestamp = postcondition.timestamp
+        devices = metadata.precondition?.device?.toList().orEmpty()
     }
 
     companion object {

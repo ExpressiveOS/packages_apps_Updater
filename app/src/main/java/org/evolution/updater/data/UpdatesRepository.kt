@@ -17,6 +17,7 @@ import org.evolution.updater.data.source.network.toSupportInfo
 import org.evolution.updater.data.source.network.toUpdate
 import org.evolution.updater.deviceinfo.DeviceInfoUtils
 import org.evolution.updater.notifications.NotificationHelper
+import org.evolution.updater.util.InstallUtils
 import org.evolution.updater.util.NetworkMonitor
 import org.evolution.updater.util.SystemUpdateInfoPublisher
 import java.io.IOException
@@ -38,11 +39,13 @@ class UpdatesRepository(
      * notification if new updates are found. Callers observe [observeLocalUpdates] for results —
      * Room only emits when the stored data actually changes.
      *
+     * @param notifyNew post the "new updates" notification when the feed offers an update that
+     *   is not stored yet (the background check passes true).
      * @return the timestamp of the fetch, or null if skipped due to no network.
      * @throws IOException on network or HTTP errors.
      * @throws SerializationException if the response cannot be parsed.
      */
-    suspend fun fetchUpdates(): Long? {
+    suspend fun fetchUpdates(notifyNew: Boolean = false): Long? {
         if (!networkMonitor.currentNetworkState.isOnline) return null
 
         val localUpdates = withContext(Dispatchers.IO) {
@@ -69,7 +72,9 @@ class UpdatesRepository(
 
         val networkIds = networkUpdates.map { it.downloadId }.toSet()
 
-        if (localUpdates.isNotEmpty() && networkUpdates.any { it.downloadId !in localUpdates }) {
+        // Don't require stored updates: the store is empty before every release (rows for the
+        // installed build are swept above), so that check meant no release ever notified.
+        if (notifyNew && networkUpdates.any { it.downloadId !in localUpdates }) {
             notificationHelper.showNewUpdatesNotification()
         }
 
@@ -122,6 +127,11 @@ class UpdatesRepository(
 
         if (update.osSdkLevel < DeviceInfoUtils.sdkLevel) {
             Log.d(TAG, "${update.name} is older than current Android version")
+            return false
+        }
+
+        if (InstallUtils.isOlderPatchLevel(update)) {
+            Log.d(TAG, "${update.name} has an older security patch than this build")
             return false
         }
         return true

@@ -21,8 +21,16 @@ object InstallUtils {
         NONE, DOWNGRADE, VERSION_UNSUPPORTED
     }
 
+    // Security patch levels are YYYY-MM-DD, so they compare as strings. update_engine wipes the
+    // data when it installs an older patch level on an unlocked phone
+    @JvmStatic
+    fun isOlderPatchLevel(update: Update) = update.osPatchLevel
+        ?.let { it.isNotBlank() && it < DeviceInfoUtils.buildSecurityPatch } == true
+
     @JvmStatic
     fun getBlockedReason(update: Update) = when {
+        isOlderPatchLevel(update) -> BlockedReason.DOWNGRADE
+
         !DeviceInfoUtils.isDowngradingAllowed &&
                 (update.timestamp < DeviceInfoUtils.buildDateTimestamp ||
                         update.osSdkLevel < DeviceInfoUtils.sdkLevel) -> BlockedReason.DOWNGRADE
