@@ -23,6 +23,7 @@ import org.evolution.updater.deviceinfo.DeviceInfoUtils
 import org.evolution.updater.misc.Utils
 import org.evolution.updater.util.BatteryMonitor.BatteryState
 import org.evolution.updater.util.InstallUtils
+import org.evolution.updater.util.RootApps
 import org.evolution.updater.util.StringUtil
 import java.time.format.FormatStyle
 
@@ -133,8 +134,12 @@ class UpdateActionHandler(
                 when (reason) {
                     InstallUtils.BlockedReason.DOWNGRADE -> {
                         title = activity.getString(R.string.blocked_update_dialog_title_downgrade)
-                        message =
-                            AnnotatedString(activity.getString(R.string.blocked_update_dialog_message_downgrade))
+                        message = AnnotatedString(
+                            update.osPatchLevel
+                                ?.takeIf { InstallUtils.isOlderPatchLevel(update) }
+                                ?.let { olderPatchLevelMessage(it) }
+                                ?: activity.getString(R.string.blocked_update_dialog_message_downgrade)
+                        )
                     }
 
                     InstallUtils.BlockedReason.VERSION_UNSUPPORTED -> {
@@ -204,9 +209,36 @@ class UpdateActionHandler(
                 )
             )
 
-            UpdateActionType.REBOOT ->
-                activity.getSystemService(PowerManager::class.java).reboot(null)
+            UpdateActionType.REBOOT -> rebootKeepingRoot()
         }
+    }
+
+    // A rooted phone loses root on the reboot unless its root app roots the updated slot first
+    // ("Install to inactive slot (After OTA)", which reboots by itself): offer that before
+    // rebooting. ExpressiveOS ships no root; this only reminds people who rooted their phone.
+    private fun rebootKeepingRoot() {
+        val reboot = { activity.getSystemService(PowerManager::class.java).reboot(null) }
+        val rootApp = RootApps.find(activity)
+        if (rootApp == null) {
+            reboot()
+            return
+        }
+
+        showDialog(
+            AlertDialogState(
+                title = activity.getString(R.string.keep_root_dialog_title),
+                text = AnnotatedString(
+                    activity.getString(R.string.keep_root_dialog_message, rootApp.label)
+                ),
+                confirmText = activity.getString(R.string.keep_root_open_app, rootApp.label),
+                onConfirm = {
+                    runCatching { activity.startActivity(rootApp.launchIntent) }
+                },
+                showDismiss = true,
+                dismissText = activity.getString(R.string.keep_root_reboot_now),
+                onDismissButton = reboot,
+            )
+        )
     }
 
     private fun runWithActiveDownloadWarning(update: Update, downloadAction: () -> Unit) {
@@ -269,6 +301,16 @@ class UpdateActionHandler(
             )
         )
     }
+
+    // Root modules that change system properties can make the phone report a newer patch level
+    // than it has; say so, since "older than the current system" alone makes no sense then
+    private fun olderPatchLevelMessage(updatePatchLevel: String): String? = runCatching {
+        activity.getString(
+            R.string.blocked_update_dialog_message_patch_level,
+            StringUtil.formatSecurityPatch(activity, updatePatchLevel),
+            StringUtil.formatSecurityPatch(activity, DeviceInfoUtils.buildSecurityPatch),
+        )
+    }.getOrNull()
 
     private fun startInstallService(intentAction: String) {
         activity.startService(
