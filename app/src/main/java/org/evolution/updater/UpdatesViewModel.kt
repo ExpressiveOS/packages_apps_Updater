@@ -65,6 +65,10 @@ class UpdatesViewModel(
 
     init {
         viewModelScope.launch {
+            repository.pruneStaleUpdates()
+        }
+
+        viewModelScope.launch {
             appStateRepository.lastCheckedTimestampFlow.collect { ts ->
                 _uiState.update { it.copy(lastCheckedTimestamp = ts) }
             }

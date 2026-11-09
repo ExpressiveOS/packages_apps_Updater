@@ -8,6 +8,7 @@ package org.evolution.updater.data
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
 import org.evolution.updater.data.source.local.UpdatesLocalDataSource
@@ -32,7 +33,24 @@ class UpdatesRepository(
     private val systemUpdateInfoPublisher: SystemUpdateInfoPublisher,
     private val appStateRepository: AppStateRepository,
 ) {
-    fun observeLocalUpdates(): Flow<List<Update>> = localDataSource.observeUpdates()
+    fun observeLocalUpdates(): Flow<List<Update>> =
+        localDataSource.observeUpdates().map { updates ->
+            updates.filter { filterUpdates(it) }
+        }
+
+    /**
+     * Purges updates that are no longer newer than the running build or fail downgrade checks.
+     * Deletes temporary downloads for network updates while keeping user files for local imports.
+     */
+    suspend fun pruneStaleUpdates() = withContext(Dispatchers.IO) {
+        val localUpdates = localDataSource.getUpdates()
+        localUpdates.filter { !filterUpdates(it) }.forEach {
+            if (it.downloadId != Update.LOCAL_ID) {
+                it.file?.delete()
+            }
+            localDataSource.removeUpdate(it.downloadId)
+        }
+    }
 
     /**
      * Fetches available updates from the server, syncs the local database, and posts a
@@ -48,18 +66,11 @@ class UpdatesRepository(
     suspend fun fetchUpdates(notifyNew: Boolean = false): Long? {
         if (!networkMonitor.currentNetworkState.isOnline) return null
 
+        pruneStaleUpdates()
+
         val localUpdates = withContext(Dispatchers.IO) {
             localDataSource.getUpdates()
         }.associateBy { it.downloadId }
-
-        withContext(Dispatchers.IO) {
-            localUpdates.values.filter {
-                it.downloadId != Update.LOCAL_ID && !filterUpdates(it)
-            }.forEach {
-                it.file?.delete()
-                localDataSource.removeUpdate(it.downloadId)
-            }
-        }
 
         val networkResponse = withContext(Dispatchers.IO) {
             networkDataSource.fetchUpdates()

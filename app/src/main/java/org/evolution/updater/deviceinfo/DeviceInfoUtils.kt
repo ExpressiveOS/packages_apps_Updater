@@ -17,7 +17,9 @@ object DeviceInfoUtils : SettingsLibDeviceInfoUtils() {
     private const val PROP_BUILD_DATE = "ro.build.date.utc"
     private const val PROP_BUILD_VERSION = "ro.modversion"
     private const val PROP_DEVICE = "ro.evolution.device"
+    private const val PROP_LINEAGE_DEVICE = "ro.lineage.device"
     private const val PROP_NEXT_DEVICE = "ro.updater.next_device"
+    private const val PROP_PRODUCT_DEVICE = "ro.product.device"
     private const val PROP_UPDATER_ALLOW_DOWNGRADING = "evolution.updater.allow_downgrading"
     private const val PROP_UPDATER_URI = "evolution.updater.uri"
     private const val PROP_UPDATE_RECOVERY = "persist.vendor.recovery_update"
@@ -26,6 +28,7 @@ object DeviceInfoUtils : SettingsLibDeviceInfoUtils() {
         "/system/build.prop",
         "/product/etc/build.prop",
         "/system_ext/etc/build.prop",
+        "/vendor/build.prop",
     )
 
     // Read-only
@@ -42,7 +45,11 @@ object DeviceInfoUtils : SettingsLibDeviceInfoUtils() {
     val buildVersion: String = romProp(PROP_BUILD_VERSION)
 
     @JvmStatic
-    val device: String = SystemProperties.get(PROP_NEXT_DEVICE).ifEmpty { romProp(PROP_DEVICE) }
+    val device: String = SystemProperties.get(PROP_NEXT_DEVICE)
+        .ifEmpty { romProp(PROP_DEVICE) }
+        .ifEmpty { romProp(PROP_LINEAGE_DEVICE) }
+        .ifEmpty { Build.DEVICE.takeIf { it.isNotBlank() && it != Build.UNKNOWN }.orEmpty() }
+        .ifEmpty { romProp(PROP_PRODUCT_DEVICE) }
 
     @JvmStatic
     val isABDevice: Boolean = SystemProperties.getBoolean(PROP_AB_DEVICE, false)
