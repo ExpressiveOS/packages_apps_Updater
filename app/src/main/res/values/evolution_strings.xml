@@ -17,4 +17,14 @@
     <string name="menu_show_updater_icon">Show updater icon</string>
     <string name="menu_show_updater_icon_summary">Show the updater icon in the top bar. When off, the ExpressiveOS logo is shown there instead</string>
 
+    <!-- Keeping root through an update: the root app roots the updated slot before the reboot -->
+    <string name="keep_root_dialog_title">Keep root?</string>
+    <string name="keep_root_dialog_message"><xliff:g id="root_app" example="Magisk">%1$s</xliff:g> is installed. To keep root, open it now, tap Install and choose \"Install to inactive slot (After OTA)\". It roots the updated system and reboots for you.\n\nIf you reboot now, the updated system starts without root, and you can root it again later the usual way.</string>
+    <string name="keep_root_open_app">Open <xliff:g id="root_app" example="Magisk">%1$s</xliff:g></string>
+    <string name="keep_root_reboot_now">Reboot now</string>
+    <string name="keep_root_notification">Update installed. To keep root, open <xliff:g id="root_app" example="Magisk">%1$s</xliff:g> and choose \"Install to inactive slot (After OTA)\" before rebooting.</string>
+
+    <!-- An update with an older security patch than the phone reports (InstallUtils.isOlderPatchLevel) -->
+    <string name="blocked_update_dialog_message_patch_level">This update has the <xliff:g id="update_patch" example="November 2026">%1$s</xliff:g> security patch, but this phone reports <xliff:g id="phone_patch" example="December 2026">%2$s</xliff:g>. Installing an older security patch erases all data, so the update is blocked.\n\nIf your phone is rooted, a module that changes system properties can make it report a newer patch. Turn that module off, reboot and check for updates again.</string>
+
 </resources>

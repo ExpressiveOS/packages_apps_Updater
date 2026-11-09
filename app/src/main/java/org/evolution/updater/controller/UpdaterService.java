@@ -32,6 +32,7 @@ import org.evolution.updater.misc.Utils;
 import org.evolution.updater.notifications.NotificationHelper;
 import org.evolution.updater.util.InstallUtils;
 import org.evolution.updater.util.OtaMetadataParser;
+import org.evolution.updater.util.RootApps;
 import org.evolution.updater.util.StringUtil;
 
 import java.io.IOException;
@@ -414,6 +415,21 @@ public class UpdaterService extends Service {
                 mNotificationBuilder.setProgress(0, 0, false);
                 String text = getString(R.string.installing_update_finished);
                 mNotificationBuilder.setContentText(text);
+                // A rooted phone keeps root only if its root app roots the updated slot before
+                // the reboot (RootApps): say so, and offer the app beside Reboot
+                RootApps.RootApp rootApp = RootApps.find(this);
+                if (rootApp != null) {
+                    String rootText = getString(R.string.keep_root_notification,
+                            rootApp.getLabel());
+                    mNotificationBuilder.setContentText(rootText);
+                    mNotificationBuilder.setStyle(
+                            new NotificationCompat.BigTextStyle().bigText(rootText));
+                    mNotificationBuilder.addAction(R.drawable.ic_notification,
+                            getString(R.string.keep_root_open_app, rootApp.getLabel()),
+                            PendingIntent.getActivity(this, 0, rootApp.getLaunchIntent(),
+                                    PendingIntent.FLAG_UPDATE_CURRENT
+                                            | PendingIntent.FLAG_IMMUTABLE));
+                }
                 mNotificationBuilder.addAction(R.drawable.ic_notification,
                         getString(R.string.reboot),
                         getRebootPendingIntent());

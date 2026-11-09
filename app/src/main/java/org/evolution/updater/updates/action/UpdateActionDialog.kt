@@ -20,6 +20,11 @@ data class AlertDialogState(
     val showDismiss: Boolean = false,
     val title: String,
     val text: AnnotatedString,
+    // Button labels: null keeps OK and Cancel
+    val confirmText: String? = null,
+    val dismissText: String? = null,
+    // Run by the dismiss button only, not by tapping outside the dialog
+    val onDismissButton: () -> Unit = {},
 )
 
 @Composable
@@ -30,13 +35,18 @@ fun UpdateActionDialog(
     SettingsAlertDialogWithIcon(
         onDismissRequest = onDismiss,
         icon = ImageVector.vectorResource(R.drawable.ic_notification),
-        confirmButton = AlertDialogButton(text = stringResource(android.R.string.ok)) {
+        confirmButton = AlertDialogButton(
+            text = dialog.confirmText ?: stringResource(android.R.string.ok),
+        ) {
             onDismiss()
             dialog.onConfirm()
         },
         dismissButton = if (dialog.showDismiss) {
-            AlertDialogButton(text = stringResource(android.R.string.cancel)) {
+            AlertDialogButton(
+                text = dialog.dismissText ?: stringResource(android.R.string.cancel),
+            ) {
                 onDismiss()
+                dialog.onDismissButton()
             }
         } else {
             null
