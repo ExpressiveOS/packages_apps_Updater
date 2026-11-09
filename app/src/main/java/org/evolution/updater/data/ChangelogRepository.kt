@@ -7,8 +7,11 @@
 package org.evolution.updater.data
 
 import android.content.Context
+import android.util.Log
+import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import java.util.zip.ZipFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -40,15 +43,16 @@ class ChangelogRepository(private val context: Context) {
             val device = DeviceInfoUtils.device
             require(device.isNotBlank()) { "Missing device name" }
 
-            val key = "$device/${update.downloadId}"
+            val key = "$device/${update.downloadId}/${update.timestamp}"
             if (cachedKey == key) {
                 cachedMarkdown?.let {
                     return@withContext it
                 }
             }
 
+            val bundled = readBundledChangelog(update)
             val url = context.getString(R.string.menu_changelog_url, device)
-            val raw = try {
+            val raw = bundled ?: try {
                 fetch(url)
             } catch (e: Exception) {
                 readLocalChangelog() ?: throw e
@@ -129,7 +133,31 @@ class ChangelogRepository(private val context: Context) {
         return null
     }
 
+    private fun readBundledChangelog(update: Update): String? {
+        val file = update.file ?: return null
+        if (!file.isFile || file.length() == 0L) {
+            return null
+        }
+        return try {
+            ZipFile(file).use { zip ->
+                val entry = zip.getEntry("changelog.txt")
+                    ?: zip.getEntry("META-INF/com/android/changelog.txt")
+                    ?: zip.getEntry("Changelog.txt")
+                entry?.let {
+                    zip.getInputStream(it).bufferedReader(Charsets.UTF_8).use { reader ->
+                        val text = reader.readText()
+                        if (text.isNotBlank()) text else null
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to read bundled changelog from ${file.name}", e)
+            null
+        }
+    }
+
     private companion object {
+        const val TAG = "ChangelogRepository"
         const val MAX_LINES = 200
         const val MAX_RESPONSE_BYTES = 256L * 1024L
 
