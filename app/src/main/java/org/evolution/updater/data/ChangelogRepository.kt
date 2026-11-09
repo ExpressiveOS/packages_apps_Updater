@@ -38,7 +38,7 @@ class ChangelogRepository(private val context: Context) {
     suspend fun fetchChangelog(update: Update): String =
         withContext(Dispatchers.IO) {
             val device = DeviceInfoUtils.device
-            require(device.isNotBlank()) { "Missing ro.evolution.device" }
+            require(device.isNotBlank()) { "Missing device name" }
 
             val key = "$device/${update.downloadId}"
             if (cachedKey == key) {
