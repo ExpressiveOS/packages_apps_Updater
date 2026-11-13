@@ -27,7 +27,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "org.evolution.updater"
+        applicationId = "org.expressiveos.updater"
         minSdk = 34
         targetSdk = 34
         versionCode = 1
@@ -82,7 +82,7 @@ android {
             }
         }
     }
-    namespace = "org.evolution.updater"
+    namespace = "org.expressiveos.updater"
 }
 
 room {

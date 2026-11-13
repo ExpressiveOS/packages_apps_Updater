@@ -18,7 +18,7 @@ android_app {
 
     platform_apis: true,
     privileged: true,
-    privapp_allowlist: "org.evolution.updater.xml",
+    privapp_allowlist: "org.expressiveos.updater.xml",
     certificate: "platform",
     system_ext_specific: true,
 
@@ -90,14 +90,14 @@ android_app {
     },
 
     required: [
-        "default-permissions_org.evolution.updater"
+        "default-permissions_org.expressiveos.updater"
     ],
 }
 
 prebuilt_etc {
-    name: "default-permissions_org.evolution.updater",
+    name: "default-permissions_org.expressiveos.updater",
     system_ext_specific: true,
     sub_dir: "default-permissions",
-    src: "default-permissions_org.evolution.updater.xml",
+    src: "default-permissions_org.expressiveos.updater.xml",
     filename_from_src: true,
 }
