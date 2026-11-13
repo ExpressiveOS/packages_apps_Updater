@@ -20,9 +20,9 @@ https://raw.githubusercontent.com/denson9874/expressiveos_ota/main/builds/{devic
 ```
 
 `{device}` is replaced at runtime with the device codename, read from
-`ro.updater.next_device` or, when that is empty, `ro.evolution.device`.
+`ro.updater.next_device` or, when that is empty, `ro.lineage.device`.
 
-To point a build at another feed, set the `evolution.updater.uri` system
+To point a build at another feed, set the `expressiveos.updater.uri` system
 property. When it is set, it is used instead of `updater_server_url`, and
 `{device}` is replaced in it the same way. The URL must use `https://`, and
 redirects are not followed.
@@ -88,9 +88,10 @@ carries.
 
 An update is offered only when its `timestamp` is newer than the running
 build's `ro.build.date.utc` and its SDK level isn't lower than the running one.
-Setting `evolution.updater.allow_downgrading` to `true` lifts the first check,
+Setting `expressiveos.updater.allow_downgrading` to `true` lifts the first check,
 and an update for a newer Android SDK level can only be installed when
-`evolution.updater.allow_major_upgrades` is `true`.
+`expressiveos.updater.allow_major_upgrades` is `true`. Each of these three properties is
+also read under its older `evolution.updater.` name when the new one is unset.
 
 
 Testing a local package
