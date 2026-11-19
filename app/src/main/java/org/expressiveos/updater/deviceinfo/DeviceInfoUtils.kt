@@ -16,8 +16,7 @@ object DeviceInfoUtils : SettingsLibDeviceInfoUtils() {
     private const val PROP_ALLOW_MAJOR_UPGRADES = "expressiveos.updater.allow_major_upgrades"
     private const val PROP_BUILD_DATE = "ro.build.date.utc"
     private const val PROP_BUILD_VERSION = "ro.modversion"
-    private const val PROP_LEGACY_DEVICE = "ro.evolution.device"
-    private const val PROP_LINEAGE_DEVICE = "ro.lineage.device"
+    private const val PROP_EXPRESSIVEOS_DEVICE = "ro.expressiveos.device"
     private const val PROP_NEXT_DEVICE = "ro.updater.next_device"
     private const val PROP_PRODUCT_DEVICE = "ro.product.device"
     private const val PROP_UPDATER_ALLOW_DOWNGRADING = "expressiveos.updater.allow_downgrading"
@@ -51,8 +50,7 @@ object DeviceInfoUtils : SettingsLibDeviceInfoUtils() {
 
     @JvmStatic
     val device: String = SystemProperties.get(PROP_NEXT_DEVICE)
-        .ifEmpty { romProp(PROP_LINEAGE_DEVICE) }
-        .ifEmpty { romProp(PROP_LEGACY_DEVICE) }
+        .ifEmpty { romProp(PROP_EXPRESSIVEOS_DEVICE) }
         .ifEmpty { Build.DEVICE.takeIf { it.isNotBlank() && it != Build.UNKNOWN }.orEmpty() }
         .ifEmpty { romProp(PROP_PRODUCT_DEVICE) }
 

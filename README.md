@@ -20,7 +20,7 @@ https://raw.githubusercontent.com/denson9874/expressiveos_ota/main/builds/{devic
 ```
 
 `{device}` is replaced at runtime with the device codename, read from
-`ro.updater.next_device` or, when that is empty, `ro.lineage.device`.
+`ro.updater.next_device` or, when that is empty, `ro.expressiveos.device`.
 
 To point a build at another feed, set the `expressiveos.updater.uri` system
 property. When it is set, it is used instead of `updater_server_url`, and
