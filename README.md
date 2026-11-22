@@ -16,7 +16,7 @@ The app sends a `GET` request to the URL in the `updater_server_url` resource,
 which a device tree can overlay. By default that is the ExpressiveOS OTA feed:
 
 ```
-https://raw.githubusercontent.com/denson9874/expressiveos_ota/main/builds/{device}.json
+https://raw.githubusercontent.com/denson9874/expressiveos_ota/main/builds/v2/{device}.json
 ```
 
 `{device}` is replaced at runtime with the device codename, read from
