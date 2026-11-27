@@ -41,7 +41,8 @@
 
         <activity
             android:name=".preferences.PreferencesActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:label="@string/preferences_title" />
 
         <activity
             android:name=".UpdatesActivity"

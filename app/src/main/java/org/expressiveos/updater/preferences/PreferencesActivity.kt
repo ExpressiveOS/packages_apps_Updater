@@ -1,5 +1,6 @@
 /*
  * SPDX-FileCopyrightText: The LineageOS Project
+ * SPDX-FileCopyrightText: 2026 ExpressiveOS
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -14,7 +15,6 @@ import androidx.compose.runtime.remember
 import com.android.axion.compose.theme.AxionTheme
 import com.android.settingslib.spa.framework.compose.LocalNavController
 import com.android.settingslib.spa.framework.compose.NavControllerWrapper
-import com.android.settingslib.spa.framework.theme.SettingsTheme
 
 class PreferencesActivity : ComponentActivity() {
 
@@ -29,10 +29,8 @@ class PreferencesActivity : ComponentActivity() {
                 }
             }
             CompositionLocalProvider(LocalNavController provides navController) {
-                SettingsTheme {
-                    AxionTheme {
-                        PreferencesScreen()
-                    }
+                AxionTheme {
+                    PreferencesScreen()
                 }
             }
         }

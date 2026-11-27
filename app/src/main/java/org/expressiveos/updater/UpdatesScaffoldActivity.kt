@@ -1,5 +1,6 @@
 /*
  * SPDX-FileCopyrightText: The LineageOS Project
+ * SPDX-FileCopyrightText: 2026 ExpressiveOS
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -11,8 +12,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -21,23 +27,43 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import com.android.axion.compose.expressive.ExpressiveAlertDialog
 import com.android.axion.compose.theme.AxionTheme
-import com.android.settingslib.spa.framework.compose.LocalNavController
-import com.android.settingslib.spa.framework.compose.NavControllerWrapper
-import com.android.settingslib.spa.framework.theme.SettingsTheme
 import org.expressiveos.updater.controller.UpdaterController
 import org.expressiveos.updater.data.ChangelogState
 import org.expressiveos.updater.data.Update
 import org.expressiveos.updater.data.UpdateStatus
 import org.expressiveos.updater.preferences.PreferencesActivity
-import org.expressiveos.updater.ui.common.ProgressDialog
 import org.expressiveos.updater.ui.SystemUpdateScreen
+import org.expressiveos.updater.ui.UpdateErrorBanner
+import org.expressiveos.updater.ui.common.ProgressDialog
 import org.expressiveos.updater.updates.action.AlertDialogState
+import org.expressiveos.updater.updates.action.UpdateAction
 import org.expressiveos.updater.updates.action.UpdateActionDialog
 import org.expressiveos.updater.updates.action.UpdateActionHandler
+import org.expressiveos.updater.updates.action.UpdateActionType
 import org.expressiveos.updater.updates.state.UpdateItemStateMapper
 import org.expressiveos.updater.updatescheck.UpdatesCheckState
 import org.expressiveos.updater.updatescheck.rememberUpdatesCheckUiState
+
+private data class ImportResultDialogState(
+    val title: String,
+    val message: String,
+    val isError: Boolean,
+)
+
+private data class ExplicitErrorBannerState(
+    val eventId: Long,
+    val downloadId: String,
+    val title: String,
+    val message: String,
+    val retryWithResume: Boolean,
+)
+
+private data class SnackbarMessageEvent(
+    val id: Long,
+    val message: String,
+)
 
 abstract class UpdatesScaffoldActivity : ComponentActivity() {
     private val viewModel by viewModels<UpdatesViewModel>()
@@ -45,6 +71,10 @@ abstract class UpdatesScaffoldActivity : ComponentActivity() {
     private var controllerStateVersion: Int by mutableIntStateOf(0)
 
     protected var importDialogVisible: Boolean by mutableStateOf(false)
+    private var importResultDialogState: ImportResultDialogState? by mutableStateOf(null)
+    private var explicitErrorBanner: ExplicitErrorBannerState? by mutableStateOf(null)
+    private var snackbarMessageEvent: SnackbarMessageEvent? by mutableStateOf(null)
+    private var nextEventId: Long = 1L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,41 +83,52 @@ abstract class UpdatesScaffoldActivity : ComponentActivity() {
 
     protected fun setupCompose() {
         setContent {
-            val navController = remember {
-                object : NavControllerWrapper {
-                    override fun navigate(route: String, popUpCurrent: Boolean) {}
-                    override fun navigateBack() = finish()
-                }
-            }
-
-            CompositionLocalProvider(LocalNavController provides navController) {
-                SettingsTheme {
-                    AxionTheme {
-                        val uiState by viewModel.uiState.collectAsState()
-                        UpdatesScaffoldContent(
-                            uiState = uiState,
-                            updaterController = activeUpdaterController,
-                            controllerStateVersion = controllerStateVersion,
-                            onBackClick = { finish() },
-                            onRefreshClick = { onRefreshClick() },
-                            onLocalUpdateClick = { onLocalUpdateClick() },
-                            onPreferencesClick = {
-                                startActivity(
-                                    Intent(
-                                        this@UpdatesScaffoldActivity,
-                                        PreferencesActivity::class.java,
-                                    )
-                                )
-                            },
-                            onControllerStateChanged = { notifyControllerStateChanged() },
-                        )
-                        if (importDialogVisible) {
-                            ProgressDialog(
-                                title = stringResource(R.string.local_update_import),
-                                text = stringResource(R.string.local_update_import_progress),
+            AxionTheme {
+                val uiState by viewModel.uiState.collectAsState()
+                UpdatesScaffoldContent(
+                    uiState = uiState,
+                    updaterController = activeUpdaterController,
+                    controllerStateVersion = controllerStateVersion,
+                    explicitErrorBanner = explicitErrorBanner,
+                    snackbarEvent = snackbarMessageEvent,
+                    onClearExplicitErrorBanner = { explicitErrorBanner = null },
+                    onBackClick = { finish() },
+                    onRefreshClick = { onRefreshClick() },
+                    onLocalUpdateClick = { onLocalUpdateClick() },
+                    onPreferencesClick = {
+                        startActivity(
+                            Intent(
+                                this@UpdatesScaffoldActivity,
+                                PreferencesActivity::class.java,
                             )
-                        }
-                    }
+                        )
+                    },
+                    onControllerStateChanged = { notifyControllerStateChanged() },
+                )
+
+                if (importDialogVisible) {
+                    ProgressDialog(
+                        title = stringResource(R.string.local_update_import),
+                        text = stringResource(R.string.local_update_import_progress),
+                        onCancel = { onCancelLocalImport() },
+                    )
+                }
+
+                importResultDialogState?.let { dialog ->
+                    ExpressiveAlertDialog(
+                        onDismissRequest = { importResultDialogState = null },
+                        title = dialog.title,
+                        text = dialog.message,
+                        confirmText = stringResource(android.R.string.ok),
+                        onConfirm = { importResultDialogState = null },
+                        icon = if (dialog.isError) {
+                            Icons.Outlined.ErrorOutline
+                        } else {
+                            Icons.Outlined.CheckCircle
+                        },
+                        destructive = dialog.isError,
+                        frosted = true,
+                    )
                 }
             }
         }
@@ -102,8 +143,45 @@ abstract class UpdatesScaffoldActivity : ComponentActivity() {
         controllerStateVersion++
     }
 
+    protected fun showImportResultDialog(title: String, message: String, isError: Boolean) {
+        importResultDialogState = ImportResultDialogState(
+            title = title,
+            message = message,
+            isError = isError,
+        )
+    }
+
+    protected fun showUpdateErrorBanner(
+        downloadId: String,
+        title: String,
+        message: String,
+        retryWithResume: Boolean,
+    ) {
+        explicitErrorBanner = ExplicitErrorBannerState(
+            eventId = nextEventId++,
+            downloadId = downloadId,
+            title = title,
+            message = message,
+            retryWithResume = retryWithResume,
+        )
+    }
+
+    protected fun clearUpdateErrorBanner(downloadId: String) {
+        if (explicitErrorBanner?.downloadId == downloadId) {
+            explicitErrorBanner = null
+        }
+    }
+
+    protected fun showSnackbarMessage(message: String) {
+        snackbarMessageEvent = SnackbarMessageEvent(
+            id = nextEventId++,
+            message = message,
+        )
+    }
+
     open fun onRefreshClick() {}
     open fun onLocalUpdateClick() {}
+    open fun onCancelLocalImport() {}
     open fun exportUpdate(update: Update) {}
 }
 
@@ -112,6 +190,9 @@ private fun UpdatesScaffoldContent(
     uiState: UpdatesViewModel.UiState,
     updaterController: UpdaterController?,
     controllerStateVersion: Int,
+    explicitErrorBanner: ExplicitErrorBannerState?,
+    snackbarEvent: SnackbarMessageEvent?,
+    onClearExplicitErrorBanner: () -> Unit,
     onBackClick: () -> Unit,
     onRefreshClick: () -> Unit,
     onLocalUpdateClick: () -> Unit,
@@ -120,6 +201,24 @@ private fun UpdatesScaffoldContent(
 ) {
     val context = LocalContext.current
     val activity = context as UpdatesScaffoldActivity
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(snackbarEvent?.id) {
+        val event = snackbarEvent ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(
+            message = event.message,
+            withDismissAction = true,
+            duration = SnackbarDuration.Long,
+        )
+    }
+
+    var dismissedErrorKey by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(explicitErrorBanner?.eventId) {
+        if (explicitErrorBanner != null) {
+            dismissedErrorKey = null
+        }
+    }
+
     val networkMonitor =
         remember { (context.applicationContext as UpdaterApplication).networkMonitor }
     val networkState by networkMonitor.networkState.collectAsState(
@@ -187,6 +286,49 @@ private fun UpdatesScaffoldContent(
 
     val activeItem = updateItems.firstOrNull { it.progress != null } ?: updateItems.firstOrNull()
 
+    val persistedErrorUpdate = liveUpdates.firstOrNull {
+        it.status == UpdateStatus.PAUSED_ERROR || it.status == UpdateStatus.VERIFICATION_FAILED
+    }
+
+    val activeErrorBanner: Pair<UpdateErrorBanner, Boolean>? = when {
+        explicitErrorBanner != null -> {
+            val key = "explicit:${explicitErrorBanner.eventId}"
+            if (dismissedErrorKey == key) {
+                null
+            } else {
+                UpdateErrorBanner(
+                    downloadId = explicitErrorBanner.downloadId,
+                    title = explicitErrorBanner.title,
+                    message = explicitErrorBanner.message,
+                    canRetry = networkState.isOnline,
+                ) to explicitErrorBanner.retryWithResume
+            }
+        }
+
+        persistedErrorUpdate != null -> {
+            val key = "status:${persistedErrorUpdate.downloadId}:${persistedErrorUpdate.status.name}"
+            if (dismissedErrorKey == key) {
+                null
+            } else if (persistedErrorUpdate.status == UpdateStatus.PAUSED_ERROR) {
+                UpdateErrorBanner(
+                    downloadId = persistedErrorUpdate.downloadId,
+                    title = stringResource(R.string.download_paused_error_notification),
+                    message = stringResource(R.string.snack_download_failed),
+                    canRetry = networkState.isOnline,
+                ) to true
+            } else {
+                UpdateErrorBanner(
+                    downloadId = persistedErrorUpdate.downloadId,
+                    title = stringResource(R.string.verification_failed_notification),
+                    message = stringResource(R.string.snack_download_verification_failed),
+                    canRetry = networkState.isOnline,
+                ) to false
+            }
+        }
+
+        else -> null
+    }
+
     SystemUpdateScreen(
         headline = getHeadline(
             updates = liveUpdates,
@@ -220,6 +362,35 @@ private fun UpdatesScaffoldContent(
         } else {
             ChangelogState.Idle
         },
+        errorBanner = activeErrorBanner?.first,
+        onRetryErrorBanner = {
+            val (banner, retryWithResume) = activeErrorBanner ?: return@SystemUpdateScreen
+            dismissedErrorKey = null
+            onClearExplicitErrorBanner()
+            val controller = updaterController
+            val update = controller?.getUpdate(banner.downloadId)
+            if (update != null && actionHandler != null) {
+                val retryAction = if (retryWithResume) {
+                    UpdateActionType.RESUME_DOWNLOAD
+                } else {
+                    UpdateActionType.START_DOWNLOAD
+                }
+                actionHandler.perform(UpdateAction(retryAction), update)
+                onControllerStateChanged()
+            } else {
+                onRefreshClick()
+            }
+        },
+        onDismissErrorBanner = {
+            dismissedErrorKey = when {
+                explicitErrorBanner != null -> "explicit:${explicitErrorBanner.eventId}"
+                persistedErrorUpdate != null ->
+                    "status:${persistedErrorUpdate.downloadId}:${persistedErrorUpdate.status.name}"
+                else -> null
+            }
+            onClearExplicitErrorBanner()
+        },
+        snackbarHostState = snackbarHostState,
         onUpdateAction = { action ->
             val item = activeItem
             val controller = updaterController

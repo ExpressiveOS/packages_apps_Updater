@@ -10,10 +10,9 @@ package org.expressiveos.updater.preferences
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
@@ -36,6 +35,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -64,7 +64,7 @@ fun PreferencesScreen() {
     val showRecoveryUpdate = remember { installRecoveryScriptExists() }
 
     AxionScaffold(
-        title = stringResource(R.string.display_name),
+        title = stringResource(R.string.preferences_title),
         onBackClick = { navController.navigateBack() },
         collapsedByDefault = false,
         containerColor = MaterialTheme.colorScheme.surface,
@@ -109,11 +109,15 @@ private fun PreferencesContent(
         CheckInterval.MONTHLY.name to stringResource(R.string.time_unit_month),
     )
 
+    val layoutDirection = LocalLayoutDirection.current
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(contentPadding)
-            .padding(horizontal = 16.dp),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(
+            start = contentPadding.calculateStartPadding(layoutDirection) + 16.dp,
+            top = contentPadding.calculateTopPadding() + 8.dp,
+            end = contentPadding.calculateEndPadding(layoutDirection) + 16.dp,
+            bottom = contentPadding.calculateBottomPadding() + 24.dp,
+        ),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item {
@@ -250,9 +254,6 @@ private fun PreferencesContent(
             }
         }
 
-        item {
-            Spacer(modifier = Modifier.height(32.dp))
-        }
     }
 }
 

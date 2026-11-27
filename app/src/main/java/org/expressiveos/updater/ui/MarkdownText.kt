@@ -27,6 +27,7 @@ fun MarkdownText(
 ) {
     val context = LocalContext.current
     val markwon = remember(context) { Markwon.create(context) }
+    val parsedMarkdown = remember(markwon, markdown) { markwon.toMarkdown(markdown) }
     val typeface = remember { Typeface.create(GOOGLE_SANS_FLEX, Typeface.NORMAL) }
     val textColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
     val linkColor = MaterialTheme.colorScheme.primary.toArgb()
@@ -45,7 +46,10 @@ fun MarkdownText(
             textView.setTextColor(textColor)
             textView.setLinkTextColor(linkColor)
             textView.textSize = textSize
-            markwon.setMarkdown(textView, markdown)
+            if (textView.tag != markdown) {
+                markwon.setParsedMarkdown(textView, parsedMarkdown)
+                textView.tag = markdown
+            }
         },
     )
 }

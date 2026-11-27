@@ -62,6 +62,7 @@ class UpdateActionHandler(
             UpdateActionType.CANCEL_DOWNLOAD -> showConfirmDialog(
                 title = activity.getString(R.string.confirm_cancel_dialog_title),
                 message = activity.getString(R.string.confirm_cancel_dialog_message),
+                destructive = true,
                 onConfirm = { updaterController.cancelDownload(downloadId) },
             )
 
@@ -123,6 +124,7 @@ class UpdateActionHandler(
             UpdateActionType.CANCEL_INSTALL -> showConfirmDialog(
                 title = activity.getString(R.string.cancel_installation_dialog_title),
                 message = activity.getString(R.string.cancel_installation_dialog_message),
+                destructive = true,
                 onConfirm = { startInstallService(UpdaterService.ACTION_INSTALL_STOP) },
             )
 
@@ -184,6 +186,7 @@ class UpdateActionHandler(
             UpdateActionType.DELETE -> showConfirmDialog(
                 title = activity.getString(R.string.confirm_delete_dialog_title),
                 message = activity.getString(R.string.confirm_delete_dialog_message),
+                destructive = true,
                 onConfirm = { updaterController.deleteUpdate(downloadId) },
             )
 
@@ -321,6 +324,7 @@ class UpdateActionHandler(
     private fun showConfirmDialog(
         title: String,
         message: CharSequence,
+        destructive: Boolean = false,
         onConfirm: () -> Unit = {},
     ) {
         showDialog(
@@ -329,6 +333,7 @@ class UpdateActionHandler(
                 text = AnnotatedString(message.toString()),
                 onConfirm = onConfirm,
                 showDismiss = true,
+                destructive = destructive,
             )
         )
     }

@@ -12,6 +12,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.ServiceInfo;
+import android.net.Uri;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.IBinder;
@@ -19,9 +20,11 @@ import android.os.ServiceSpecificException;
 import android.text.format.Formatter;
 import android.util.Log;
 
+import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
 import org.expressiveos.updater.R;
+import org.expressiveos.updater.UpdateImporter;
 import org.expressiveos.updater.UpdaterApplication;
 import org.expressiveos.updater.UpdaterReceiver;
 import org.expressiveos.updater.UpdatesActivity;
@@ -53,12 +56,34 @@ public class UpdaterService extends Service {
     public static final String ACTION_INSTALL_RESUME = "action_install_resume";
 
     public static final String ACTION_POST_REBOOT_CLEANUP = "action_post_reboot_cleanup";
+    public static final String ACTION_IMPORT_LOCAL = "action_import_local";
+    public static final String ACTION_IMPORT_CANCEL = "action_import_cancel";
+    public static final String ACTION_LOCAL_IMPORT_STATE =
+            "org.expressiveos.updater.action.LOCAL_IMPORT_STATE";
 
     public static final int DOWNLOAD_RESUME = 0;
     public static final int DOWNLOAD_PAUSE = 1;
     public static final int DOWNLOAD_CANCEL = 2;
 
     private static final int NOTIFICATION_ID = 10;
+    private static final int IMPORT_NOTIFICATION_ID = 11;
+
+    public static final class LocalImportResult {
+        public enum Status {
+            SUCCESS,
+            FAILURE,
+            CANCELLED
+        }
+
+        public final Status status;
+        @Nullable
+        public final Update update;
+
+        public LocalImportResult(Status status, @Nullable Update update) {
+            this.status = status;
+            this.update = update;
+        }
+    }
 
     private final IBinder mBinder = new LocalBinder();
     private boolean mHasClients;
@@ -70,6 +95,13 @@ public class UpdaterService extends Service {
 
     private UpdaterController mUpdaterController;
     private UserPreferencesRepository mUserPreferencesRepository;
+
+    private final Object mImportLock = new Object();
+    private UpdateImporter mUpdateImporter;
+    private boolean mIsImportingLocal = false;
+    private boolean mImportUsingForeground = false;
+    @Nullable
+    private LocalImportResult mPendingImportResult = null;
 
     @Override
     public void onCreate() {
@@ -133,6 +165,7 @@ public class UpdaterService extends Service {
 
     @Override
     public void onDestroy() {
+        cancelLocalImport();
         unregisterReceiver(mBroadcastReceiver);
         super.onDestroy();
     }
@@ -244,6 +277,13 @@ public class UpdaterService extends Service {
                 installer.reconnect();
                 installer.resume();
             }
+        } else if (ACTION_IMPORT_LOCAL.equals(intent.getAction())) {
+            Uri uri = intent.getData();
+            if (uri != null) {
+                startLocalImport(uri);
+            }
+        } else if (ACTION_IMPORT_CANCEL.equals(intent.getAction())) {
+            cancelLocalImport();
         }
         return ABUpdateInstaller.isInstallingUpdate(this) ? START_STICKY : START_NOT_STICKY;
     }
@@ -252,9 +292,150 @@ public class UpdaterService extends Service {
         return mUpdaterController;
     }
 
+    public boolean isImportingLocalUpdate() {
+        synchronized (mImportLock) {
+            return mIsImportingLocal || (mUpdateImporter != null && mUpdateImporter.isImporting());
+        }
+    }
+
+    @Nullable
+    public LocalImportResult consumePendingImportResult() {
+        synchronized (mImportLock) {
+            LocalImportResult result = mPendingImportResult;
+            mPendingImportResult = null;
+            return result;
+        }
+    }
+
+    public void startLocalImport(Uri uri) {
+        synchronized (mImportLock) {
+            if (mIsImportingLocal || (mUpdateImporter != null && mUpdateImporter.isImporting())) {
+                Log.w(TAG, "Local update import already in progress");
+                return;
+            }
+            mUpdateImporter = new UpdateImporter(this, new UpdateImporter.Callbacks() {
+                @Override
+                public void onImportStarted() {
+                    handleLocalImportStarted();
+                }
+
+                @Override
+                public void onImportCompleted(Update update) {
+                    handleLocalImportCompleted(update);
+                }
+
+                @Override
+                public void onImportCancelled() {
+                    handleLocalImportCancelled();
+                }
+            });
+            mUpdateImporter.startImport(uri);
+        }
+    }
+
+    public void cancelLocalImport() {
+        UpdateImporter importer;
+        synchronized (mImportLock) {
+            importer = mUpdateImporter;
+        }
+        if (importer != null) {
+            importer.stopImport();
+        }
+    }
+
+    private void handleLocalImportStarted() {
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this,
+                NotificationHelper.CHANNEL_ONGOING)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle(getString(R.string.local_update_import))
+                .setContentText(getString(R.string.local_update_import_progress))
+                .setProgress(0, 0, true)
+                .setOngoing(true)
+                .setAutoCancel(false)
+                .setShowWhen(false)
+                .addAction(
+                        android.R.drawable.ic_delete,
+                        getString(android.R.string.cancel),
+                        getCancelImportPendingIntent());
+
+        Intent notificationIntent = new Intent(this, UpdatesActivity.class);
+        PendingIntent contentIntent = PendingIntent.getActivity(this, 1, notificationIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        builder.setContentIntent(contentIntent);
+
+        synchronized (mImportLock) {
+            mIsImportingLocal = true;
+            mPendingImportResult = null;
+            boolean alreadyForeground = mUpdaterController.hasActiveDownloads()
+                    || mUpdaterController.isInstallingUpdate();
+            if (!alreadyForeground) {
+                startForeground(IMPORT_NOTIFICATION_ID, builder.build(),
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+                mImportUsingForeground = true;
+            } else {
+                mNotificationManager.notify(IMPORT_NOTIFICATION_ID, builder.build());
+                mImportUsingForeground = false;
+            }
+        }
+        notifyLocalImportStateChanged();
+    }
+
+    private void handleLocalImportCompleted(@Nullable Update update) {
+        synchronized (mImportLock) {
+            mIsImportingLocal = false;
+            mPendingImportResult = new LocalImportResult(
+                    update != null ? LocalImportResult.Status.SUCCESS
+                            : LocalImportResult.Status.FAILURE,
+                    update);
+        }
+        finishLocalImportNotification();
+        if (update != null) {
+            mUpdaterController.notifyUpdateChange(update.getDownloadId());
+        }
+        notifyLocalImportStateChanged();
+        tryStopSelf();
+    }
+
+    private void handleLocalImportCancelled() {
+        synchronized (mImportLock) {
+            mIsImportingLocal = false;
+            mPendingImportResult = new LocalImportResult(
+                    LocalImportResult.Status.CANCELLED, null);
+        }
+        finishLocalImportNotification();
+        notifyLocalImportStateChanged();
+        tryStopSelf();
+    }
+
+    private void finishLocalImportNotification() {
+        mNotificationManager.cancel(IMPORT_NOTIFICATION_ID);
+        synchronized (mImportLock) {
+            if (mImportUsingForeground) {
+                mImportUsingForeground = false;
+                if (!mUpdaterController.hasActiveDownloads()
+                        && !mUpdaterController.isInstallingUpdate()) {
+                    stopForeground(STOP_FOREGROUND_REMOVE);
+                }
+            }
+        }
+    }
+
+    private void notifyLocalImportStateChanged() {
+        Intent intent = new Intent(ACTION_LOCAL_IMPORT_STATE);
+        intent.setPackage(getPackageName());
+        sendBroadcast(intent);
+    }
+
+    private PendingIntent getCancelImportPendingIntent() {
+        final Intent intent = new Intent(this, UpdaterService.class);
+        intent.setAction(ACTION_IMPORT_CANCEL);
+        return PendingIntent.getService(this, IMPORT_NOTIFICATION_ID, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
     private void tryStopSelf() {
         if (!mHasClients && !mUpdaterController.hasActiveDownloads() &&
-                !mUpdaterController.isInstallingUpdate()) {
+                !mUpdaterController.isInstallingUpdate() && !isImportingLocalUpdate()) {
             Log.d(TAG, "Service no longer needed, stopping");
             stopSelf();
         }

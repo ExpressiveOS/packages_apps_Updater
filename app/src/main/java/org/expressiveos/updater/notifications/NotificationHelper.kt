@@ -45,7 +45,7 @@ class NotificationHelper(context: Context) {
                 NotificationChannel(
                     CHANNEL_INSTALL_ERROR,
                     appContext.getString(R.string.update_failed_channel_title),
-                    NotificationManager.IMPORTANCE_LOW,
+                    NotificationManager.IMPORTANCE_HIGH,
                 ),
             )
         )

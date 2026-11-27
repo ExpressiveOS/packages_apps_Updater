@@ -11,6 +11,7 @@ package org.expressiveos.updater.ui
 import android.content.Intent
 import android.text.format.DateFormat
 import android.text.format.DateUtils
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,19 +21,28 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.AdminPanelSettings
@@ -57,6 +67,8 @@ import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.SystemUpdateAlt
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.outlined.Verified
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -64,7 +76,9 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -79,7 +93,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
@@ -87,6 +105,7 @@ import com.android.axion.compose.expressive.ExpressiveFloatingToolbar
 import com.android.axion.compose.expressive.ExpressiveMorphButton
 import com.android.axion.compose.expressive.ExpressiveMorphLoadingIndicator
 import com.android.axion.compose.expressive.ExpressiveShapePreset
+import com.android.axion.compose.expressive.ExpressiveSnackbarHost
 import com.android.axion.compose.expressive.ExpressiveToolbarPrimaryPill
 import com.android.axion.compose.expressive.ExpressiveWavyLinearProgress
 import com.android.axion.compose.expressive.rememberExpressiveHaptics
@@ -116,6 +135,15 @@ import org.expressiveos.updater.util.StringUtil
 private val ContentMaxWidth = 600.dp
 private val HorizontalPadding = 20.dp
 private val TopLogoHeight = 40.dp
+private val FloatingToolbarClearance = 108.dp
+private val FloatingToolbarSnackbarOffset = 96.dp
+
+data class UpdateErrorBanner(
+    val downloadId: String,
+    val title: String,
+    val message: String,
+    val canRetry: Boolean = true,
+)
 
 @Composable
 fun SystemUpdateScreen(
@@ -136,127 +164,291 @@ fun SystemUpdateScreen(
     showLogo: Boolean = true,
     showUpdaterIcon: Boolean = false,
     changelogState: ChangelogState = ChangelogState.Idle,
+    errorBanner: UpdateErrorBanner? = null,
+    onRetryErrorBanner: () -> Unit = {},
+    onDismissErrorBanner: () -> Unit = {},
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     onUpdateAction: (UpdateAction) -> Unit = {},
 ) {
     val showCheckButton = !isBusy && updateItem == null
+    val hasFloatingBar = showCheckButton || (!isBusy && updateItem != null)
     val isActivelyWorking = isBusy || updateItem?.progress != null
+    val layoutDirection = LocalLayoutDirection.current
+    val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val safeHorizontal = WindowInsets.safeDrawing
+        .only(WindowInsetsSides.Horizontal)
+        .asPaddingValues()
+    val safeStart = safeHorizontal.calculateStartPadding(layoutDirection)
+    val safeEnd = safeHorizontal.calculateEndPadding(layoutDirection)
+    val bottomContentClearance = if (hasFloatingBar) {
+        navBarBottom + FloatingToolbarClearance
+    } else {
+        navBarBottom + 24.dp
+    }
 
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        containerColor = MaterialTheme.colorScheme.surface,
-        topBar = {
-            SystemUpdateTopBar(
-                onBackClick = onBackClick,
-                showCheckAction = !showCheckButton,
-                canCheckForUpdates = canCheckForUpdates,
-                onCheckClick = onCheckClick,
-                onLocalUpdateClick = onLocalUpdateClick,
-                onPreferencesClick = onPreferencesClick,
-                showUpdaterIcon = showUpdaterIcon,
-                showLogo = showLogo,
-                activePulse = isActivelyWorking,
-                supportInfo = supportInfo,
-                updateOverflowActions = updateItem?.actions?.overflow ?: emptyList(),
-                onUpdateAction = onUpdateAction,
-            )
-        },
-        bottomBar = {
-            if (showCheckButton) {
-                CheckForUpdateFloatingBar(
-                    enabled = canCheckForUpdates,
-                    onClick = onCheckClick,
+    Box(modifier = modifier.fillMaxSize()) {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            topBar = {
+                SystemUpdateTopBar(
+                    onBackClick = onBackClick,
+                    showCheckAction = !showCheckButton,
+                    canCheckForUpdates = canCheckForUpdates,
+                    onCheckClick = onCheckClick,
+                    onLocalUpdateClick = onLocalUpdateClick,
+                    onPreferencesClick = onPreferencesClick,
+                    showUpdaterIcon = showUpdaterIcon,
+                    showLogo = showLogo,
+                    activePulse = isActivelyWorking,
+                    supportInfo = supportInfo,
+                    updateOverflowActions = updateItem?.actions?.overflow ?: emptyList(),
+                    onUpdateAction = onUpdateAction,
                 )
-            } else if (!isBusy && updateItem != null) {
-                UpdateActionFloatingBar(
-                    item = updateItem,
-                    onAction = onUpdateAction,
-                )
-            }
-        },
-    ) { paddingValues ->
-        if (isBusy) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-                    .padding(horizontal = HorizontalPadding),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
+            },
+        ) { paddingValues ->
+            if (isBusy) {
                 Column(
-                    modifier = Modifier.widthIn(max = ContentMaxWidth),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(
+                            top = paddingValues.calculateTopPadding(),
+                            bottom = navBarBottom + 24.dp,
+                            start = safeStart + HorizontalPadding,
+                            end = safeEnd + HorizontalPadding,
+                        ),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    ExpressiveHeroEmblem(
-                        active = true,
-                        icon = Icons.Outlined.Refresh,
-                        size = 76.dp,
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    ScreenHeader(
-                        headline = headline,
-                        centered = true,
-                    )
-                    Spacer(modifier = Modifier.height(20.dp))
-                    ExpressiveWavyLinearProgress(
-                        progress = null,
-                        modifier = Modifier.fillMaxWidth(),
-                        strokeWidth = 5.dp,
-                        amplitudeDp = 3.dp,
-                    )
+                    Column(
+                        modifier = Modifier.widthIn(max = ContentMaxWidth),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        ExpressiveHeroEmblem(
+                            active = true,
+                            icon = Icons.Outlined.Refresh,
+                            size = 76.dp,
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        ScreenHeader(
+                            headline = headline,
+                            centered = true,
+                        )
+                        Spacer(modifier = Modifier.height(20.dp))
+                        ExpressiveWavyLinearProgress(
+                            progress = null,
+                            modifier = Modifier.fillMaxWidth(),
+                            strokeWidth = 5.dp,
+                            amplitudeDp = 3.dp,
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        UpdateCheckAnimation()
+                    }
                 }
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    UpdateCheckAnimation()
-                }
+                return@Scaffold
             }
-            return@Scaffold
-        }
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Column(
-                modifier = Modifier
-                    .widthIn(max = ContentMaxWidth)
-                    .fillMaxWidth()
-                    .padding(horizontal = HorizontalPadding),
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    top = paddingValues.calculateTopPadding() + 8.dp,
+                    bottom = bottomContentClearance,
+                    start = safeStart,
+                    end = safeEnd,
+                ),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                HeroHeaderSection(
-                    headline = headline,
-                    supportingText = supportingText,
-                    supportingTextIsError = supportingTextIsError,
-                    showLogoBanner = showDeviceInfo && showLogo && showUpdaterIcon,
-                    updateItem = updateItem,
-                    active = isActivelyWorking,
-                )
+                if (errorBanner != null) {
+                    item(key = "error_banner") {
+                        Column(
+                            modifier = Modifier
+                                .widthIn(max = ContentMaxWidth)
+                                .fillMaxWidth()
+                                .padding(horizontal = HorizontalPadding),
+                        ) {
+                            UpdateErrorBannerCard(
+                                banner = errorBanner,
+                                onRetry = onRetryErrorBanner,
+                                onDismiss = onDismissErrorBanner,
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
+                    }
+                }
+
+                item(key = "hero_header") {
+                    Box(
+                        modifier = Modifier
+                            .widthIn(max = ContentMaxWidth)
+                            .fillMaxWidth()
+                            .padding(horizontal = HorizontalPadding),
+                    ) {
+                        HeroHeaderSection(
+                            headline = headline,
+                            supportingText = supportingText,
+                            supportingTextIsError = supportingTextIsError,
+                            showLogoBanner = showDeviceInfo && showLogo && showUpdaterIcon,
+                            updateItem = updateItem,
+                            active = isActivelyWorking,
+                        )
+                    }
+                }
 
                 if (showDeviceInfo || lastCheckedTimestamp > 0) {
-                    Spacer(modifier = Modifier.height(24.dp))
-                    DeviceStatusSegmentedGroup(
-                        showDeviceInfo = showDeviceInfo,
-                        maintainer = supportInfo.maintainer,
-                        lastCheckedTimestamp = lastCheckedTimestamp,
-                    )
+                    item(key = "device_status") {
+                        Column(
+                            modifier = Modifier
+                                .widthIn(max = ContentMaxWidth)
+                                .fillMaxWidth()
+                                .padding(horizontal = HorizontalPadding),
+                        ) {
+                            Spacer(modifier = Modifier.height(24.dp))
+                            DeviceStatusSegmentedGroup(
+                                showDeviceInfo = showDeviceInfo,
+                                maintainer = supportInfo.maintainer,
+                                lastCheckedTimestamp = lastCheckedTimestamp,
+                            )
+                        }
+                    }
                 }
 
                 updateItem?.let { item ->
-                    Spacer(modifier = Modifier.height(20.dp))
-                    UpdateDetailsSection(
-                        item = item,
-                        changelogState = changelogState,
+                    item(key = "update_details") {
+                        Column(
+                            modifier = Modifier
+                                .widthIn(max = ContentMaxWidth)
+                                .fillMaxWidth()
+                                .padding(horizontal = HorizontalPadding),
+                        ) {
+                            Spacer(modifier = Modifier.height(20.dp))
+                            UpdateDetailsSection(
+                                item = item,
+                                changelogState = changelogState,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        ExpressiveSnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(
+                    start = safeStart + HorizontalPadding,
+                    end = safeEnd + HorizontalPadding,
+                    bottom = if (hasFloatingBar) FloatingToolbarSnackbarOffset else 16.dp,
+                ),
+        )
+
+        if (showCheckButton) {
+            CheckForUpdateFloatingBar(
+                enabled = canCheckForUpdates,
+                onClick = onCheckClick,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        } else if (!isBusy && updateItem != null) {
+            UpdateActionFloatingBar(
+                item = updateItem,
+                onAction = onUpdateAction,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
+    }
+}
+
+@Composable
+private fun UpdateErrorBannerCard(
+    banner: UpdateErrorBanner,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val haptics = rememberExpressiveHaptics()
+    val colors = MaterialTheme.colorScheme
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { liveRegion = LiveRegionMode.Polite },
+        shape = RoundedCornerShape(PreferenceTokens.CornerRadiusOuter),
+        color = colors.errorContainer,
+        contentColor = colors.onErrorContainer,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 18.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Outlined.ErrorOutline,
+                    contentDescription = null,
+                    tint = colors.onErrorContainer,
+                    modifier = Modifier.size(24.dp),
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = banner.title,
+                    style = MaterialTheme.typography.titleMediumEmphasized,
+                    color = colors.onErrorContainer,
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = banner.message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.onErrorContainer,
+            )
+            Spacer(modifier = Modifier.height(14.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        haptics.performStepTick()
+                        onDismiss()
+                    },
+                    shape = CircleShape,
+                    border = BorderStroke(1.dp, colors.onErrorContainer.copy(alpha = 0.45f)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = colors.onErrorContainer,
+                    ),
+                    modifier = Modifier.defaultMinSize(minHeight = 48.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.action_dismiss),
+                        style = MaterialTheme.typography.labelLarge,
                     )
                 }
-
-                Spacer(modifier = Modifier.height(32.dp))
+                Button(
+                    onClick = {
+                        haptics.performConfirm()
+                        onRetry()
+                    },
+                    enabled = banner.canRetry,
+                    shape = CircleShape,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = colors.error,
+                        contentColor = colors.onError,
+                    ),
+                    modifier = Modifier.defaultMinSize(minHeight = 48.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.action_retry),
+                        style = MaterialTheme.typography.labelLargeEmphasized,
+                    )
+                }
             }
         }
     }
@@ -280,9 +472,7 @@ private fun HeroHeaderSection(
     }
 
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 8.dp),
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(PreferenceTokens.CornerRadiusOuter),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
@@ -746,25 +936,31 @@ private fun DeviceStatusSegmentedGroup(
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val locale = remember(context, configuration.locales) { StringUtil.getCurrentLocale(context) }
+    val is24Hour = DateFormat.is24HourFormat(context)
     val securityPatch = remember(locale) {
         runCatching {
             StringUtil.formatSecurityPatchFullDate(context, DeviceInfoUtils.buildSecurityPatch)
         }.getOrDefault(DeviceInfoUtils.buildSecurityPatch)
     }
     val buildVersion = remember { DeviceInfoUtils.buildVersion }
-    val lastCheckedText = remember(lastCheckedTimestamp) {
+    val lastCheckedDate = remember(lastCheckedTimestamp, locale) {
         if (lastCheckedTimestamp <= 0L) {
             ""
         } else {
-            val date = DateUtils.formatDateTime(
+            DateUtils.formatDateTime(
                 context,
                 lastCheckedTimestamp,
                 DateUtils.FORMAT_SHOW_DATE or
                     DateUtils.FORMAT_ABBREV_MONTH or
                     DateUtils.FORMAT_NO_YEAR,
             )
-            val time = DateFormat.getTimeFormat(context).format(Date(lastCheckedTimestamp))
-            "$date ($time)"
+        }
+    }
+    val lastCheckedTime = remember(lastCheckedTimestamp, locale, is24Hour) {
+        if (lastCheckedTimestamp <= 0L) {
+            ""
+        } else {
+            DateFormat.getTimeFormat(context).format(Date(lastCheckedTimestamp))
         }
     }
 
@@ -798,15 +994,15 @@ private fun DeviceStatusSegmentedGroup(
             }
         }
 
-        if (lastCheckedText.isNotEmpty()) {
+        if (lastCheckedDate.isNotEmpty() && lastCheckedTime.isNotEmpty()) {
             item {
                 BasePreference(
                     title = stringResource(R.string.header_last_check),
-                    summary = lastCheckedText,
+                    summary = lastCheckedDate,
                     icon = Icons.Outlined.History,
                     widget = {
                         Text(
-                            text = DateFormat.getTimeFormat(context).format(Date(lastCheckedTimestamp)),
+                            text = lastCheckedTime,
                             style = MaterialTheme.typography.labelMediumEmphasized.withTabularNums(),
                             color = MaterialTheme.colorScheme.primary,
                         )
@@ -821,9 +1017,10 @@ private fun DeviceStatusSegmentedGroup(
 private fun CheckForUpdateFloatingBar(
     enabled: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
             .padding(horizontal = HorizontalPadding, vertical = 12.dp),
@@ -847,6 +1044,7 @@ private fun CheckForUpdateFloatingBar(
 private fun UpdateActionFloatingBar(
     item: UpdateItemState,
     onAction: (UpdateAction) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val primary = item.actions.primary
@@ -869,7 +1067,7 @@ private fun UpdateActionFloatingBar(
     }
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
             .padding(horizontal = HorizontalPadding, vertical = 12.dp),
@@ -941,6 +1139,7 @@ private fun SystemUpdateTopBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
             .statusBarsPadding()
             .padding(horizontal = HorizontalPadding, vertical = 8.dp),
     ) {
@@ -962,9 +1161,10 @@ private fun SystemUpdateTopBar(
             ExpressiveLogoGlow(
                 contentDescription = stringResource(R.string.brand_name),
                 activePulse = activePulse,
+                logoHeight = TopLogoHeight,
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .height(TopLogoHeight),
+                    .heightIn(min = 48.dp),
             )
         }
 

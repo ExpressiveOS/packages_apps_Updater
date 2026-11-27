@@ -27,10 +27,14 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -53,8 +57,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
@@ -154,6 +159,7 @@ fun ExpressiveHeroEmblem(
     icon: ImageVector = SystemUpdateIcon,
     size: Dp = 76.dp,
     onClick: (() -> Unit)? = null,
+    onClickLabel: String? = null,
 ) {
     val reducedMotion = rememberExpressiveReducedMotion()
     val haptics = rememberExpressiveHaptics()
@@ -217,15 +223,20 @@ fun ExpressiveHeroEmblem(
 
     Box(
         modifier = modifier
+            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
             .size(size + 24.dp)
             .then(
                 if (onClick != null) {
-                    Modifier.pointerInput(onClick) {
-                        detectTapGestures {
+                    Modifier.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        role = Role.Button,
+                        onClickLabel = onClickLabel,
+                        onClick = {
                             haptics.performStepTick()
                             onClick()
-                        }
-                    }
+                        },
+                    )
                 } else {
                     Modifier
                 },
@@ -285,6 +296,7 @@ fun ExpressiveLogoGlow(
     modifier: Modifier = Modifier,
     contentDescription: String? = null,
     activePulse: Boolean = false,
+    logoHeight: Dp? = null,
 ) {
     val context = LocalContext.current
     val reducedMotion = rememberExpressiveReducedMotion()
@@ -320,22 +332,43 @@ fun ExpressiveLogoGlow(
         }
     }
 
-    Canvas(
+    val replayLabel = stringResource(R.string.logo_replay_animation)
+    val interactiveModifier = if (!reducedMotion) {
+        Modifier.clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            role = Role.Button,
+            onClickLabel = replayLabel,
+            onClick = {
+                haptics.performStepTick()
+                replayCount++
+            },
+        )
+    } else {
+        Modifier
+    }
+
+    Box(
         modifier = modifier
-            .aspectRatio(VIEWPORT_W / VIEWPORT_H)
-            .pointerInput(reducedMotion) {
-                if (!reducedMotion) {
-                    detectTapGestures {
-                        haptics.performStepTick()
-                        replayCount++
-                    }
-                }
-            }
+            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+            .then(interactiveModifier)
             .semantics { contentDescription?.let { this.contentDescription = it } },
+        contentAlignment = Alignment.Center,
     ) {
-        val t = if (reducedMotion) SWEEP_MS else time
-        drawIntoCanvas { canvas ->
-            renderer.draw(canvas.nativeCanvas, size.width, size.height, t, ink, palette, activePulse && !reducedMotion)
+        val canvasModifier = if (logoHeight != null) {
+            Modifier
+                .height(logoHeight)
+                .aspectRatio(VIEWPORT_W / VIEWPORT_H)
+        } else {
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(VIEWPORT_W / VIEWPORT_H)
+        }
+        Canvas(modifier = canvasModifier) {
+            val t = if (reducedMotion) SWEEP_MS else time
+            drawIntoCanvas { canvas ->
+                renderer.draw(canvas.nativeCanvas, size.width, size.height, t, ink, palette, activePulse && !reducedMotion)
+            }
         }
     }
 }
