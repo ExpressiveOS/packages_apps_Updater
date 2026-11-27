@@ -83,6 +83,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -92,7 +93,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -135,7 +138,7 @@ import org.expressiveos.updater.util.StringUtil
 private val ContentMaxWidth = 600.dp
 private val HorizontalPadding = 20.dp
 private val TopLogoHeight = 40.dp
-private val FloatingToolbarClearance = 108.dp
+private val FloatingToolbarClearance = 124.dp
 private val FloatingToolbarSnackbarOffset = 96.dp
 
 data class UpdateErrorBanner(
@@ -180,8 +183,15 @@ fun SystemUpdateScreen(
         .asPaddingValues()
     val safeStart = safeHorizontal.calculateStartPadding(layoutDirection)
     val safeEnd = safeHorizontal.calculateEndPadding(layoutDirection)
+    val density = LocalDensity.current
+    var floatingBarHeightPx by remember { mutableIntStateOf(0) }
+    val measuredFloatingBarClearance = if (floatingBarHeightPx > 0) {
+        with(density) { floatingBarHeightPx.toDp() } + 24.dp
+    } else {
+        0.dp
+    }
     val bottomContentClearance = if (hasFloatingBar) {
-        navBarBottom + FloatingToolbarClearance
+        maxOf(navBarBottom + FloatingToolbarClearance, measuredFloatingBarClearance)
     } else {
         navBarBottom + 24.dp
     }
@@ -354,13 +364,17 @@ fun SystemUpdateScreen(
             CheckForUpdateFloatingBar(
                 enabled = canCheckForUpdates,
                 onClick = onCheckClick,
-                modifier = Modifier.align(Alignment.BottomCenter),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .onSizeChanged { floatingBarHeightPx = it.height },
             )
         } else if (!isBusy && updateItem != null) {
             UpdateActionFloatingBar(
                 item = updateItem,
                 onAction = onUpdateAction,
-                modifier = Modifier.align(Alignment.BottomCenter),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .onSizeChanged { floatingBarHeightPx = it.height },
             )
         }
     }
