@@ -1,27 +1,50 @@
 /*
  * SPDX-FileCopyrightText: The LineageOS Project
+ * SPDX-FileCopyrightText: 2026 ExpressiveOS
  * SPDX-License-Identifier: Apache-2.0
  */
 
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+
 package org.expressiveos.updater.preferences
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.CloudSync
+import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.material.icons.outlined.NetworkCheck
+import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.material.icons.outlined.Stream
+import androidx.compose.material.icons.outlined.SystemSecurityUpdate
+import androidx.compose.material.icons.outlined.SystemUpdate
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.IntState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.android.settingslib.spa.widget.preference.ListPreference
-import com.android.settingslib.spa.widget.preference.ListPreferenceModel
-import com.android.settingslib.spa.widget.preference.ListPreferenceOption
-import com.android.settingslib.spa.widget.preference.SwitchPreference
-import com.android.settingslib.spa.widget.preference.SwitchPreferenceModel
-import com.android.settingslib.spa.widget.scaffold.RegularScaffold
-import com.android.settingslib.spa.widget.ui.Category
+import com.android.axion.compose.preferences.ListPreference
+import com.android.axion.compose.preferences.PreferenceGroup
+import com.android.axion.compose.preferences.SwitchPreference
+import com.android.axion.compose.scaffold.AxionScaffold
+import com.android.settingslib.spa.framework.compose.LocalNavController
+import java.io.File
 import kotlinx.coroutines.launch
 import org.expressiveos.updater.R
 import org.expressiveos.updater.UpdaterApplication
@@ -29,18 +52,30 @@ import org.expressiveos.updater.data.CheckInterval
 import org.expressiveos.updater.data.UserPreferencesRepository
 import org.expressiveos.updater.deviceinfo.DeviceInfoUtils
 import org.expressiveos.updater.util.BatteryMonitor
-import java.io.File
 
 @Composable
 fun PreferencesScreen() {
     val context = LocalContext.current
+    val navController = LocalNavController.current
     val application = remember(context) { context.applicationContext as UpdaterApplication }
     val repository = application.userPreferencesRepository
     val batteryMonitor = application.batteryMonitor
     val isABDevice = remember { DeviceInfoUtils.isABDevice }
     val showRecoveryUpdate = remember { installRecoveryScriptExists() }
-    RegularScaffold(title = stringResource(R.string.display_name)) {
-        PreferencesContent(repository, batteryMonitor, isABDevice, showRecoveryUpdate)
+
+    AxionScaffold(
+        title = stringResource(R.string.display_name),
+        onBackClick = { navController.navigateBack() },
+        collapsedByDefault = false,
+        containerColor = MaterialTheme.colorScheme.surface,
+    ) { paddingValues ->
+        PreferencesContent(
+            repository = repository,
+            batteryMonitor = batteryMonitor,
+            isABDevice = isABDevice,
+            showRecoveryUpdate = showRecoveryUpdate,
+            contentPadding = paddingValues,
+        )
     }
 }
 
@@ -50,6 +85,7 @@ private fun PreferencesContent(
     batteryMonitor: BatteryMonitor,
     isABDevice: Boolean,
     showRecoveryUpdate: Boolean,
+    contentPadding: PaddingValues,
 ) {
     val coroutineScope = rememberCoroutineScope()
     val abPerfMode by repository.abPerfModeFlow.collectAsStateWithLifecycle(false)
@@ -67,134 +103,156 @@ private fun PreferencesContent(
     val showUpdaterIcon by repository.showUpdaterIconFlow.collectAsStateWithLifecycle(false)
     var recoveryUpdateEnabled by remember { mutableStateOf(repository.getRecoveryUpdateEnabled()) }
 
-    val autoUpdatesCheckSummary = stringResource(R.string.menu_auto_updates_check_summary)
-    val autoDeleteUpdatesSummary = stringResource(R.string.menu_auto_delete_updates_summary)
-    val streamUpdatesSummary = stringResource(R.string.menu_stream_updates_summary)
-    val meteredNetworkWarningSummary = stringResource(R.string.menu_metered_network_warning_summary)
-    val abPerfModeSummary = stringResource(R.string.menu_ab_perf_mode_summary)
-    val abPerfModeChargingSummary = stringResource(R.string.menu_ab_perf_mode_summary_charging)
-    val updateRecoverySummary = stringResource(R.string.menu_update_recovery_summary)
-    val showLogoSummary = stringResource(R.string.menu_show_logo_summary)
-    val showUpdaterIconSummary = stringResource(R.string.menu_show_updater_icon_summary)
-    val selectedCheckInterval = remember(checkInterval) {
-        object : IntState {
-            override val intValue = checkInterval.ordinal
-        }
-    }
+    val intervalOptions = listOf(
+        CheckInterval.DAILY.name to stringResource(R.string.time_unit_day),
+        CheckInterval.WEEKLY.name to stringResource(R.string.time_unit_week),
+        CheckInterval.MONTHLY.name to stringResource(R.string.time_unit_month),
+    )
 
-    Category(title = stringResource(R.string.pref_category_background_sync)) {
-        SwitchPreference(object : SwitchPreferenceModel {
-            override val title = stringResource(R.string.menu_auto_updates_check)
-            override val summary = { autoUpdatesCheckSummary }
-            override val checked = { periodicCheckEnabled }
-            override val onCheckedChange: (Boolean) -> Unit = { value ->
-                coroutineScope.launch { repository.setPeriodicCheckEnabled(value) }
-            }
-        })
-
-        ListPreference(object : ListPreferenceModel {
-            override val title = stringResource(R.string.menu_auto_updates_check_interval)
-            override val enabled = { periodicCheckEnabled }
-            override val options = listOf(
-                ListPreferenceOption(
-                    id = CheckInterval.DAILY.ordinal,
-                    text = stringResource(R.string.time_unit_day),
-                ),
-                ListPreferenceOption(
-                    id = CheckInterval.WEEKLY.ordinal,
-                    text = stringResource(R.string.time_unit_week),
-                ),
-                ListPreferenceOption(
-                    id = CheckInterval.MONTHLY.ordinal,
-                    text = stringResource(R.string.time_unit_month),
-                ),
-            )
-            override val selectedId = selectedCheckInterval
-            override val onIdSelected: (Int) -> Unit = { id ->
-                val interval = CheckInterval.entries.getOrElse(id) { CheckInterval.default }
-                coroutineScope.launch { repository.setCheckInterval(interval) }
-            }
-        })
-    }
-
-    Category(title = stringResource(R.string.pref_category_download_install)) {
-        if (isABDevice) {
-            SwitchPreference(object : SwitchPreferenceModel {
-                override val title = stringResource(R.string.menu_stream_updates)
-                override val summary = { streamUpdatesSummary }
-                override val checked = { streamUpdates }
-                override val onCheckedChange: (Boolean) -> Unit = { value ->
-                    coroutineScope.launch { repository.setStreamUpdates(value) }
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(contentPadding)
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        item {
+            PreferenceGroup(title = stringResource(R.string.pref_category_background_sync)) {
+                item {
+                    SwitchPreference(
+                        title = stringResource(R.string.menu_auto_updates_check),
+                        summary = stringResource(R.string.menu_auto_updates_check_summary),
+                        checked = periodicCheckEnabled,
+                        icon = Icons.Outlined.CloudSync,
+                        onCheckedChange = { value ->
+                            coroutineScope.launch { repository.setPeriodicCheckEnabled(value) }
+                        },
+                    )
                 }
-            })
-        } else {
-            SwitchPreference(object : SwitchPreferenceModel {
-                override val title = stringResource(R.string.menu_auto_delete_updates)
-                override val summary = { autoDeleteUpdatesSummary }
-                override val checked = { autoDelete }
-                override val onCheckedChange: (Boolean) -> Unit = { value ->
-                    coroutineScope.launch { repository.setAutoDelete(value) }
+                item {
+                    ListPreference(
+                        title = stringResource(R.string.menu_auto_updates_check_interval),
+                        options = intervalOptions,
+                        value = checkInterval.name,
+                        enabled = periodicCheckEnabled,
+                        icon = Icons.Outlined.Schedule,
+                        onValueChange = { selectedName ->
+                            val interval = runCatching { CheckInterval.valueOf(selectedName) }
+                                .getOrDefault(CheckInterval.default)
+                            coroutineScope.launch { repository.setCheckInterval(interval) }
+                        },
+                    )
                 }
-            })
+            }
         }
 
-        SwitchPreference(object : SwitchPreferenceModel {
-            override val title = stringResource(R.string.menu_metered_network_warning)
-            override val summary = { meteredNetworkWarningSummary }
-            override val checked = { meteredNetworkWarning }
-            override val onCheckedChange: (Boolean) -> Unit = { value ->
-                coroutineScope.launch { repository.setMeteredNetworkWarning(value) }
-            }
-        })
-
-        if (isABDevice) {
-            SwitchPreference(object : SwitchPreferenceModel {
-                override val title = stringResource(R.string.menu_ab_perf_mode)
-                override val summary = {
-                    if (batteryState.isAcCharging) {
-                        abPerfModeChargingSummary
-                    } else {
-                        abPerfModeSummary
+        item {
+            PreferenceGroup(title = stringResource(R.string.pref_category_download_install)) {
+                if (isABDevice) {
+                    item {
+                        SwitchPreference(
+                            title = stringResource(R.string.menu_stream_updates),
+                            summary = stringResource(R.string.menu_stream_updates_summary),
+                            checked = streamUpdates,
+                            icon = Icons.Outlined.Stream,
+                            onCheckedChange = { value ->
+                                coroutineScope.launch { repository.setStreamUpdates(value) }
+                            },
+                        )
+                    }
+                } else {
+                    item {
+                        SwitchPreference(
+                            title = stringResource(R.string.menu_auto_delete_updates),
+                            summary = stringResource(R.string.menu_auto_delete_updates_summary),
+                            checked = autoDelete,
+                            icon = Icons.Outlined.DeleteSweep,
+                            onCheckedChange = { value ->
+                                coroutineScope.launch { repository.setAutoDelete(value) }
+                            },
+                        )
                     }
                 }
-                override val changeable = { !batteryState.isAcCharging }
-                override val checked = { batteryState.isAcCharging || abPerfMode }
-                override val onCheckedChange: (Boolean) -> Unit = { value ->
-                    coroutineScope.launch { repository.setAbPerfMode(value) }
+
+                item {
+                    SwitchPreference(
+                        title = stringResource(R.string.menu_metered_network_warning),
+                        summary = stringResource(R.string.menu_metered_network_warning_summary),
+                        checked = meteredNetworkWarning,
+                        icon = Icons.Outlined.NetworkCheck,
+                        onCheckedChange = { value ->
+                            coroutineScope.launch { repository.setMeteredNetworkWarning(value) }
+                        },
+                    )
                 }
-            })
+
+                if (isABDevice) {
+                    item {
+                        val acCharging = batteryState.isAcCharging
+                        SwitchPreference(
+                            title = stringResource(R.string.menu_ab_perf_mode),
+                            summary = if (acCharging) {
+                                stringResource(R.string.menu_ab_perf_mode_summary_charging)
+                            } else {
+                                stringResource(R.string.menu_ab_perf_mode_summary)
+                            },
+                            checked = acCharging || abPerfMode,
+                            enabled = !acCharging,
+                            icon = Icons.Outlined.Speed,
+                            onCheckedChange = { value ->
+                                coroutineScope.launch { repository.setAbPerfMode(value) }
+                            },
+                        )
+                    }
+                }
+
+                if (showRecoveryUpdate) {
+                    item {
+                        SwitchPreference(
+                            title = stringResource(R.string.menu_update_recovery),
+                            summary = stringResource(R.string.menu_update_recovery_summary),
+                            checked = recoveryUpdateEnabled,
+                            icon = Icons.Outlined.SystemSecurityUpdate,
+                            onCheckedChange = { value ->
+                                recoveryUpdateEnabled = value
+                                repository.setRecoveryUpdateEnabled(value)
+                            },
+                        )
+                    }
+                }
+            }
         }
 
-        if (showRecoveryUpdate) {
-            SwitchPreference(object : SwitchPreferenceModel {
-                override val title = stringResource(R.string.menu_update_recovery)
-                override val summary = { updateRecoverySummary }
-                override val checked = { recoveryUpdateEnabled }
-                override val onCheckedChange: (Boolean) -> Unit = { value ->
-                    recoveryUpdateEnabled = value
-                    repository.setRecoveryUpdateEnabled(value)
+        item {
+            PreferenceGroup(title = stringResource(R.string.pref_category_appearance)) {
+                item {
+                    SwitchPreference(
+                        title = stringResource(R.string.menu_show_logo),
+                        summary = stringResource(R.string.menu_show_logo_summary),
+                        checked = showLogo,
+                        icon = Icons.Outlined.AutoAwesome,
+                        onCheckedChange = { value ->
+                            coroutineScope.launch { repository.setShowLogo(value) }
+                        },
+                    )
                 }
-            })
+                item {
+                    SwitchPreference(
+                        title = stringResource(R.string.menu_show_updater_icon),
+                        summary = stringResource(R.string.menu_show_updater_icon_summary),
+                        checked = showUpdaterIcon,
+                        icon = Icons.Outlined.SystemUpdate,
+                        onCheckedChange = { value ->
+                            coroutineScope.launch { repository.setShowUpdaterIcon(value) }
+                        },
+                    )
+                }
+            }
         }
-    }
 
-    Category(title = stringResource(R.string.pref_category_appearance)) {
-        SwitchPreference(object : SwitchPreferenceModel {
-            override val title = stringResource(R.string.menu_show_logo)
-            override val summary = { showLogoSummary }
-            override val checked = { showLogo }
-            override val onCheckedChange: (Boolean) -> Unit = { value ->
-                coroutineScope.launch { repository.setShowLogo(value) }
-            }
-        })
-        SwitchPreference(object : SwitchPreferenceModel {
-            override val title = stringResource(R.string.menu_show_updater_icon)
-            override val summary = { showUpdaterIconSummary }
-            override val checked = { showUpdaterIcon }
-            override val onCheckedChange: (Boolean) -> Unit = { value ->
-                coroutineScope.launch { repository.setShowUpdaterIcon(value) }
-            }
-        })
+        item {
+            Spacer(modifier = Modifier.height(32.dp))
+        }
     }
 }
 

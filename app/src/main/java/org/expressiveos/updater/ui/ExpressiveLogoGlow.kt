@@ -1,11 +1,13 @@
 /*
  * SPDX-FileCopyrightText: Evolution X
+ * SPDX-FileCopyrightText: 2026 ExpressiveOS
  * SPDX-License-Identifier: Apache-2.0
  */
 
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
 package org.expressiveos.updater.ui
 
-import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BlurMaskFilter
@@ -18,9 +20,20 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.Shader
 import android.provider.Settings
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -30,17 +43,30 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.core.graphics.PathParser
+import com.android.axion.compose.expressive.ExpressivePolygons
+import com.android.axion.compose.expressive.MorphPolygonShape
+import com.android.axion.compose.expressive.rememberExpressiveHaptics
+import com.android.axion.compose.expressive.rememberExpressiveMorph
+import com.android.axion.compose.expressive.rememberExpressiveReducedMotion
+import com.android.axion.compose.theme.AxionTheme
 import com.android.settingslib.spa.debug.UiModePreviews
-import com.android.settingslib.spa.framework.theme.SettingsTheme
 import org.expressiveos.updater.R
 
 private const val VIEWPORT_W = 1080f
@@ -63,10 +89,6 @@ private val FRINGE_RIGHT_ON_DARK = 0xFFF3B1FC.toInt()
 private val FRINGE_LEFT_ON_LIGHT = 0xFF1842D1.toInt()
 private val FRINGE_RIGHT_ON_LIGHT = 0xFF6B2BBB.toInt()
 
-/**
- * The wordmark's colours on dark and on light surfaces: the sweep's five stops (the first colour
- * repeated last, for [BLOOM_STOPS]) and the fringe's left and right colours.
- */
 private class GlowPalette(
     val onDark: IntArray,
     val onLight: IntArray,
@@ -85,17 +107,8 @@ private val BLOOM = GlowPalette(
     fringeRightOnLight = FRINGE_RIGHT_ON_LIGHT,
 )
 
-/**
- * Settings.Secure key with the banner colours of the holiday theme that is on, written by
- * Settings' holiday themes (Settings' GlowView reads it too):
- * "<id>;<sweep on dark>;<sweep on light>;<fringe on dark>;<fringe on light>", a sweep being 4
- * RRGGBB colours and a fringe 2 (left, right), split by ','. Unset, empty or anything else means
- * the Bloom colours.
- */
 private const val KEY_HOLIDAY_PALETTE = "expressiveos_holiday_palette"
 
-// Gradient vector (viewport units). One sweep moves it by its own length,
-// so the repeating gradient loops seamlessly.
 private const val GRAD_X1 = 190f
 private const val GRAD_Y1 = 60f
 private const val GRAD_X2 = 890f
@@ -112,9 +125,8 @@ private const val FRINGE_SIGMA = 2.5f
 private const val FRINGE_SHIFT = 2f
 private const val FRINGE_ALPHA = 128 // 50%
 
-// Shine: a skewed band crossing the logo, then a pause.
 private const val SHINE_MS = 5000L
-private const val SHINE_ACTIVE = 0.3f // fraction of the period spent moving
+private const val SHINE_ACTIVE = 0.3f
 private const val SHINE_FROM = 120f
 private const val SHINE_TO = 900f
 private const val SHINE_WIDTH = 90f
@@ -122,8 +134,6 @@ private const val SHINE_SKEW = -0.36397f // tan(-20 deg)
 private const val SHINE_REACH = 5000f
 private const val SHINE_FILL_ALPHA = 64 // 25%
 
-// Sparkles: x, y, size (viewport units), then twinkle start/peak/end as a
-// fraction of SPARKLE_MS.
 private const val SPARKLE_MS = 3200L
 private val SPARKLES = arrayOf(
     floatArrayOf(880f, 66f, 9f, 0.00f, 0.20f, 0.40f),
@@ -132,34 +142,176 @@ private val SPARKLES = arrayOf(
 )
 
 /**
+ * Morphing Material 3 Expressive [RoundedPolygon] hero emblem (`COOKIE_7 <-> SOFT_BURST`)
+ * with ambient Monet halo glow. Subtly pulses and morphs while [active] (`checking` / `downloading` /
+ * `installing`), snapping cleanly to its resting `COOKIE_7` geometry when [rememberExpressiveReducedMotion]
+ * is `true`.
+ */
+@Composable
+fun ExpressiveHeroEmblem(
+    active: Boolean,
+    modifier: Modifier = Modifier,
+    icon: ImageVector = SystemUpdateIcon,
+    size: Dp = 76.dp,
+    onClick: (() -> Unit)? = null,
+) {
+    val reducedMotion = rememberExpressiveReducedMotion()
+    val haptics = rememberExpressiveHaptics()
+    val morph = rememberExpressiveMorph(
+        start = ExpressivePolygons.Cookie7,
+        end = ExpressivePolygons.SoftBurst,
+    )
+
+    val morphProgress: Float
+    val rotationDeg: Float
+    val haloScale: Float
+
+    if (active && !reducedMotion) {
+        val infiniteTransition = rememberInfiniteTransition(label = "ExpressiveHeroEmblemPulse")
+        val p by infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 2400),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "EmblemMorph",
+        )
+        val rot by infiniteTransition.animateFloat(
+            initialValue = -8f,
+            targetValue = 8f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 3600),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "EmblemRotation",
+        )
+        val pulse by infiniteTransition.animateFloat(
+            initialValue = 0.94f,
+            targetValue = 1.08f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 1800),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "EmblemHaloScale",
+        )
+        morphProgress = p
+        rotationDeg = rot
+        haloScale = pulse
+    } else {
+        morphProgress = 0f
+        rotationDeg = 0f
+        haloScale = 1f
+    }
+
+    val shape = remember(morph, morphProgress, rotationDeg) {
+        MorphPolygonShape(
+            morph = morph,
+            progress = morphProgress,
+            rotationDegrees = rotationDeg,
+        )
+    }
+
+    val primaryGlow = MaterialTheme.colorScheme.primary.copy(alpha = if (active) 0.28f else 0.16f)
+    val tertiaryGlow = MaterialTheme.colorScheme.tertiary.copy(alpha = if (active) 0.22f else 0.10f)
+
+    Box(
+        modifier = modifier
+            .size(size + 24.dp)
+            .then(
+                if (onClick != null) {
+                    Modifier.pointerInput(onClick) {
+                        detectTapGestures {
+                            haptics.performStepTick()
+                            onClick()
+                        }
+                    }
+                } else {
+                    Modifier
+                },
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        // Ambient radial Monet glow
+        Box(
+            modifier = Modifier
+                .size(size + 22.dp)
+                .graphicsLayer {
+                    scaleX = haloScale
+                    scaleY = haloScale
+                }
+                .clip(CircleShape)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(primaryGlow, tertiaryGlow, ComposeColor.Transparent),
+                    ),
+                ),
+        )
+
+        Box(
+            modifier = Modifier
+                .size(size)
+                .clip(shape)
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.primaryContainer,
+                            MaterialTheme.colorScheme.tertiaryContainer,
+                        ),
+                    ),
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(size * 0.44f),
+            )
+        }
+    }
+}
+
+/**
  * The ExpressiveOS wordmark in the Bloom mark's colours: its four petals
  * (violet, blue, green, coral) as a gradient sweeping across the outline, a
  * soft glow with a blue and violet fringe, a periodic shine streak and a few
- * twinkling sparkles. Plays one seamless [SWEEP_MS] sweep and holds the still
- * frame (replaying on tap) so the screen can idle at LTPO minimum refresh rate.
- * Mirrors GlowView in Settings.
+ * twinkling sparkles. Plays one seamless [SWEEP_MS] sweep (or loops smoothly while
+ * [activePulse] is `true`) and snaps immediately to its settled frame when
+ * [rememberExpressiveReducedMotion] is `true`.
  */
 @Composable
 fun ExpressiveLogoGlow(
     modifier: Modifier = Modifier,
     contentDescription: String? = null,
+    activePulse: Boolean = false,
 ) {
     val context = LocalContext.current
+    val reducedMotion = rememberExpressiveReducedMotion()
+    val haptics = rememberExpressiveHaptics()
     val renderer = remember {
         GlowRenderer(context.resources.getStringArray(R.array.expressiveos_logo_paths))
     }
     val ink = MaterialTheme.colorScheme.onSurface.toArgb() or 0xFF000000.toInt()
-    // A holiday theme's colours while its banner is on, else Bloom's
     val palette = remember { readHolidayPalette(context) ?: BLOOM }
 
-    // Respect "remove animations": draw one still frame instead of sweeping.
-    val animate = remember { ValueAnimator.areAnimatorsEnabled() }
     var replayCount by remember { mutableIntStateOf(0) }
     var time by remember { mutableLongStateOf(SWEEP_MS) }
-    if (animate) {
-        LaunchedEffect(replayCount) {
-            time = 0L
-            val start = withFrameMillis { it }
+
+    LaunchedEffect(reducedMotion, activePulse, replayCount) {
+        if (reducedMotion) {
+            time = SWEEP_MS
+            return@LaunchedEffect
+        }
+        time = 0L
+        val start = withFrameMillis { it }
+        if (activePulse) {
+            while (true) {
+                withFrameMillis { now ->
+                    time = (now - start) % SWEEP_MS
+                }
+            }
+        } else {
             while (time < SWEEP_MS) {
                 withFrameMillis { now ->
                     time = (now - start).coerceAtMost(SWEEP_MS)
@@ -171,16 +323,19 @@ fun ExpressiveLogoGlow(
     Canvas(
         modifier = modifier
             .aspectRatio(VIEWPORT_W / VIEWPORT_H)
-            .pointerInput(animate) {
-                if (animate) {
-                    detectTapGestures { replayCount++ }
+            .pointerInput(reducedMotion) {
+                if (!reducedMotion) {
+                    detectTapGestures {
+                        haptics.performStepTick()
+                        replayCount++
+                    }
                 }
             }
             .semantics { contentDescription?.let { this.contentDescription = it } },
     ) {
-        val t = time
+        val t = if (reducedMotion) SWEEP_MS else time
         drawIntoCanvas { canvas ->
-            renderer.draw(canvas.nativeCanvas, size.width, size.height, t, ink, palette)
+            renderer.draw(canvas.nativeCanvas, size.width, size.height, t, ink, palette, activePulse && !reducedMotion)
         }
     }
 }
@@ -315,7 +470,6 @@ private class GlowRenderer(pathData: Array<String>) {
         shineStroke.color = color
         sparklePaint.color = color
 
-        // Light ink means a dark surface
         val onDark = Color.luminance(color) > 0.5f
         holoColors = if (onDark) colors.onDark else colors.onLight
         leftFringePaint.color = if (onDark) colors.fringeLeftOnDark else colors.fringeLeftOnLight
@@ -332,6 +486,7 @@ private class GlowRenderer(pathData: Array<String>) {
         t: Long,
         inkColor: Int,
         colors: GlowPalette,
+        continuous: Boolean,
     ) {
         if (inkColor != ink || colors !== palette) applyInk(inkColor, colors)
         if (w != width || h != height) {
@@ -342,7 +497,6 @@ private class GlowRenderer(pathData: Array<String>) {
         val holo = holo ?: return
         if (scale <= 0f) return
 
-        // Sweep the gradient along its own vector, which loops seamlessly.
         val sweep = (t % SWEEP_MS) / SWEEP_MS.toFloat()
         shaderMatrix.setTranslate(
             sweep * (GRAD_X2 - GRAD_X1) * scale,
@@ -353,24 +507,22 @@ private class GlowRenderer(pathData: Array<String>) {
         fillPaint.shader = holo
         strokePaint.shader = holo
 
-        // Cached alpha masks for soft glow and left/right fringes
         glowMask?.let { canvas.drawBitmap(it, 0f, 0f, glowPaint) }
         fringeMask?.let { mask ->
             canvas.drawBitmap(mask, -FRINGE_SHIFT * scale, 0f, leftFringePaint)
             canvas.drawBitmap(mask, FRINGE_SHIFT * scale, 0f, rightFringePaint)
         }
 
-        // Glassy fill and gradient outline
         canvas.drawPath(logo, fillPaint)
         canvas.drawPath(logo, strokePaint)
 
-        drawShine(canvas, t)
-        drawSparkles(canvas, t)
+        drawShine(canvas, t, continuous)
+        drawSparkles(canvas, t, continuous)
     }
 
-    private fun drawShine(canvas: android.graphics.Canvas, t: Long) {
+    private fun drawShine(canvas: android.graphics.Canvas, t: Long, continuous: Boolean) {
         val p = (t % SHINE_MS) / SHINE_MS.toFloat()
-        if (p >= SHINE_ACTIVE || !endsInTime(t, SHINE_MS, SHINE_ACTIVE)) return
+        if (p >= SHINE_ACTIVE || (!continuous && !endsInTime(t, SHINE_MS, SHINE_ACTIVE))) return
 
         val bx = SHINE_FROM + (SHINE_TO - SHINE_FROM) * (p / SHINE_ACTIVE)
 
@@ -378,7 +530,6 @@ private class GlowRenderer(pathData: Array<String>) {
         canvas.drawPath(logo, shineFill)
         canvas.drawPath(logo, shineStroke)
 
-        // Keep only the part of the logo that sits under the band
         canvas.save()
         canvas.translate(ox, oy)
         canvas.scale(scale, scale)
@@ -391,11 +542,11 @@ private class GlowRenderer(pathData: Array<String>) {
         canvas.restoreToCount(layer)
     }
 
-    private fun drawSparkles(canvas: android.graphics.Canvas, t: Long) {
+    private fun drawSparkles(canvas: android.graphics.Canvas, t: Long, continuous: Boolean) {
         val p = (t % SPARKLE_MS) / SPARKLE_MS.toFloat()
         for (s in SPARKLES) {
             val k = pulse(p, s[3], s[4], s[5]) * s[2] * scale
-            if (k <= 0f || !endsInTime(t, SPARKLE_MS, s[5])) continue
+            if (k <= 0f || (!continuous && !endsInTime(t, SPARKLE_MS, s[5]))) continue
             canvas.save()
             canvas.translate(ox + s[0] * scale, oy + s[1] * scale)
             canvas.scale(k, k)
@@ -404,25 +555,17 @@ private class GlowRenderer(pathData: Array<String>) {
         }
     }
 
-    // Whether what ends at end (a fraction of period) in t's period is over by SWEEP_MS,
-    // so the animation never stops on a half-lit shine or sparkle
     private fun endsInTime(t: Long, period: Long, end: Float): Boolean =
         t - t % period + (end * period).toLong() <= SWEEP_MS
 
-    // 0 at start and end, 1 at peak, linear in between
     private fun pulse(p: Float, start: Float, peak: Float, end: Float): Float {
         if (p <= start || p >= end) return 0f
         return if (p < peak) (p - start) / (peak - start) else (end - p) / (end - peak)
     }
 
-    // BlurMaskFilter takes a radius, Skia converts it with sigma = 0.57735 * r + 0.5
     private fun blurRadius(sigma: Float): Float = maxOf(1f, (sigma - 0.5f) / 0.57735f)
 }
 
-/**
- * The [KEY_HOLIDAY_PALETTE] colours, or null (Bloom) when the key is unset, can't be read or
- * isn't exactly the five groups it should be.
- */
 private fun readHolidayPalette(context: Context): GlowPalette? {
     val value = runCatching {
         Settings.Secure.getString(context.contentResolver, KEY_HOLIDAY_PALETTE)
@@ -435,7 +578,6 @@ private fun readHolidayPalette(context: Context): GlowPalette? {
     val fringeOnDark = parseColors(groups[3], 2) ?: return null
     val fringeOnLight = parseColors(groups[4], 2) ?: return null
     return GlowPalette(
-        // The first colour repeated, so the sweep loops
         onDark = onDark + onDark[0],
         onLight = onLight + onLight[0],
         fringeLeftOnDark = fringeOnDark[0],
@@ -445,14 +587,12 @@ private fun readHolidayPalette(context: Context): GlowPalette? {
     )
 }
 
-/** Exactly [count] opaque colours from RRGGBB hex split by ',', else null. */
 private fun parseColors(group: String, count: Int): IntArray? {
     val parts = group.split(',')
     if (parts.size != count) return null
     val colors = IntArray(count)
     for (i in 0 until count) {
         val part = parts[i]
-        // ASCII hex only: toInt(16) alone would also take a sign and other scripts' digits
         if (part.length != 6 || !part.all { it in '0'..'9' || it in 'A'..'F' || it in 'a'..'f' }) {
             return null
         }
@@ -464,7 +604,7 @@ private fun parseColors(group: String, count: Int): IntArray? {
 @UiModePreviews
 @Composable
 private fun ExpressiveLogoGlowPreview() {
-    SettingsTheme {
+    AxionTheme {
         ExpressiveLogoGlow()
     }
 }

@@ -41,6 +41,9 @@ class UpdateItemStateMapper(
                         eta = update.eta.takeIf { it > 0 }
                             ?.let { StringUtil.formatETA(context, it * 1000).toString() }
                             ?: "",
+                        speed = update.speed.takeIf { it > 0 }
+                            ?.let { "${Formatter.formatShortFileSize(context, it)}/s" }
+                            ?: "",
                     )
                 }
             }
@@ -195,6 +198,8 @@ class UpdateItemStateMapper(
             },
             progress = progress,
             actions = actions,
+            channel = update.type.orEmpty(),
+            isImportedLocal = update.downloadId == Update.LOCAL_ID,
         )
     }
 

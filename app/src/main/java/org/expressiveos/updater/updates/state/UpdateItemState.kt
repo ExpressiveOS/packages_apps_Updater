@@ -23,6 +23,8 @@ data class UpdateItemState(
 
     val progress: ProgressState?,
     val actions: UpdateActions,
+    val channel: String = "",
+    val isImportedLocal: Boolean = false,
 )
 
 sealed interface ProgressState {
@@ -30,6 +32,7 @@ sealed interface ProgressState {
         val percent: Float,
         val downloadedSize: String,
         val eta: String,
+        val speed: String = "",
     ) : ProgressState
 
     data object Indeterminate : ProgressState

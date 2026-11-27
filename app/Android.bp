@@ -39,6 +39,7 @@ android_app {
     ],
 
     static_libs: [
+        "ax_compose",
         // DO NOT EDIT THIS SECTION MANUALLY
         "androidx.activity_activity-compose",
         "androidx.compose.animation_animation",

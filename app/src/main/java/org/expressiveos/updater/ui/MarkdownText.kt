@@ -1,10 +1,12 @@
 /*
  * SPDX-FileCopyrightText: 2026 PixelOS
+ * SPDX-FileCopyrightText: 2026 ExpressiveOS
  * SPDX-License-Identifier: Apache-2.0
  */
 
 package org.expressiveos.updater.ui
 
+import android.graphics.Typeface
 import android.text.method.LinkMovementMethod
 import android.widget.TextView
 import androidx.compose.material3.MaterialTheme
@@ -16,6 +18,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import io.noties.markwon.Markwon
 
+private const val GOOGLE_SANS_FLEX = "google-sans-flex"
+
 @Composable
 fun MarkdownText(
     markdown: String,
@@ -23,7 +27,9 @@ fun MarkdownText(
 ) {
     val context = LocalContext.current
     val markwon = remember(context) { Markwon.create(context) }
+    val typeface = remember { Typeface.create(GOOGLE_SANS_FLEX, Typeface.NORMAL) }
     val textColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
+    val linkColor = MaterialTheme.colorScheme.primary.toArgb()
     val textSize = MaterialTheme.typography.bodyMedium.fontSize.value
 
     AndroidView(
@@ -31,10 +37,13 @@ fun MarkdownText(
         factory = { viewContext ->
             TextView(viewContext).apply {
                 movementMethod = LinkMovementMethod.getInstance()
+                this.typeface = typeface
+                setLineSpacing(0f, 1.18f)
             }
         },
         update = { textView ->
             textView.setTextColor(textColor)
+            textView.setLinkTextColor(linkColor)
             textView.textSize = textSize
             markwon.setMarkdown(textView, markdown)
         },

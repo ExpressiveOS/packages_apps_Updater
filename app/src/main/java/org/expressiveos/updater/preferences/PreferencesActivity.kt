@@ -11,6 +11,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import com.android.axion.compose.theme.AxionTheme
 import com.android.settingslib.spa.framework.compose.LocalNavController
 import com.android.settingslib.spa.framework.compose.NavControllerWrapper
 import com.android.settingslib.spa.framework.theme.SettingsTheme
@@ -29,7 +30,9 @@ class PreferencesActivity : ComponentActivity() {
             }
             CompositionLocalProvider(LocalNavController provides navController) {
                 SettingsTheme {
-                    PreferencesScreen()
+                    AxionTheme {
+                        PreferencesScreen()
+                    }
                 }
             }
         }

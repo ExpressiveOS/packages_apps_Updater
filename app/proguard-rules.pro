@@ -26,3 +26,4 @@
 # SettingsLib transitively bundles android.app.admin.flags classes that are
 # also provided by the platform framework; suppress the duplicate-class warnings.
 -dontwarn android.app.admin.flags.**
+-dontwarn platform.test.motion.**

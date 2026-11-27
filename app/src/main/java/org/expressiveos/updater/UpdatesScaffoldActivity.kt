@@ -21,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import com.android.axion.compose.theme.AxionTheme
 import com.android.settingslib.spa.framework.compose.LocalNavController
 import com.android.settingslib.spa.framework.compose.NavControllerWrapper
 import com.android.settingslib.spa.framework.theme.SettingsTheme
@@ -61,29 +62,31 @@ abstract class UpdatesScaffoldActivity : ComponentActivity() {
 
             CompositionLocalProvider(LocalNavController provides navController) {
                 SettingsTheme {
-                    val uiState by viewModel.uiState.collectAsState()
-                    UpdatesScaffoldContent(
-                        uiState = uiState,
-                        updaterController = activeUpdaterController,
-                        controllerStateVersion = controllerStateVersion,
-                        onBackClick = { finish() },
-                        onRefreshClick = { onRefreshClick() },
-                        onLocalUpdateClick = { onLocalUpdateClick() },
-                        onPreferencesClick = {
-                            startActivity(
-                                Intent(
-                                    this@UpdatesScaffoldActivity,
-                                    PreferencesActivity::class.java,
+                    AxionTheme {
+                        val uiState by viewModel.uiState.collectAsState()
+                        UpdatesScaffoldContent(
+                            uiState = uiState,
+                            updaterController = activeUpdaterController,
+                            controllerStateVersion = controllerStateVersion,
+                            onBackClick = { finish() },
+                            onRefreshClick = { onRefreshClick() },
+                            onLocalUpdateClick = { onLocalUpdateClick() },
+                            onPreferencesClick = {
+                                startActivity(
+                                    Intent(
+                                        this@UpdatesScaffoldActivity,
+                                        PreferencesActivity::class.java,
+                                    )
                                 )
-                            )
-                        },
-                        onControllerStateChanged = { notifyControllerStateChanged() },
-                    )
-                    if (importDialogVisible) {
-                        ProgressDialog(
-                            title = stringResource(R.string.local_update_import),
-                            text = stringResource(R.string.local_update_import_progress),
+                            },
+                            onControllerStateChanged = { notifyControllerStateChanged() },
                         )
+                        if (importDialogVisible) {
+                            ProgressDialog(
+                                title = stringResource(R.string.local_update_import),
+                                text = stringResource(R.string.local_update_import_progress),
+                            )
+                        }
                     }
                 }
             }
